@@ -12,6 +12,8 @@ pandas = "*"
 seaborn = "*"
 jupyter = "*"
 sacred = "*"
+plotly = "*"
+pymongo = "*"
 
 [dev-packages]
 
