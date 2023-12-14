@@ -33,9 +33,14 @@ def create_dln_model(layer_widths):
     return model
 
 
-def generate_training_data(true_param, model, input_dim, num_samples):
-    # Generate random inputs
-    inputs = np.random.uniform(-10, 10, size=(num_samples, input_dim))
+def generate_training_data(true_param, model, input_dim, num_samples, input_dist="uniform"):
+    if input_dist == "unit_ball":
+        # Generate random inputs uniformly from the input ball
+        input_directions = np.random.normal(size=(num_samples, input_dim))
+        inputs = (np.random.rand(num_samples, 1)**(1/input_dim)) * (input_directions/np.linalg.norm(input_directions, axis=-1, keepdims=True))
+    elif input_dist == "uniform":
+        # Generate random inputs
+        inputs = np.random.uniform(-10, 10, size=(num_samples, input_dim))
     true_outputs = model.apply(true_param, inputs)
     return inputs, true_outputs
 
@@ -64,7 +69,7 @@ def true_dln_learning_coefficient(true_rank, layer_widths, input_dim, verbose=Fa
     with Linear Units.” https://doi.org/10.2139/ssrn.4404877.
     """
     M_list = np.array([input_dim] + list(layer_widths)) - true_rank
-    indices = brute_force_search_subset(M_list, early_return=verbose)
+    indices = _search_subset(M_list)
     M_subset = M_list[indices]
     if verbose:
         print(f"M_list: {M_list}, indices: {indices}, M_subset: {M_subset}")
@@ -79,7 +84,8 @@ def true_dln_learning_coefficient(true_rank, layer_widths, input_dim, verbose=Fa
     term3 = -ell * (ell - 1) / 4 * (M_subset_sum / ell)**2
     term4 = 1 / 2 * np.sum([M_subset[i] * M_subset[j] for i in range(ell + 1) for j in range(i + 1, ell + 1)])
     learning_coefficient = term1 + term2 + term3 + term4
-    return learning_coefficient
+    multiplicity = a * (ell - a) + 1
+    return learning_coefficient, multiplicity
 
 def _condition(indices, intlist, verbose=False):
     intlist = np.array(intlist)
@@ -99,24 +105,50 @@ def _condition(indices, intlist, verbose=False):
         return False
     return True
 
-
-def generate_indices_subsets(length):
-    indices = list(range(length))
-    for size in range(1, length + 1):
-        for subset in itertools.combinations(indices, size):
-            subset = np.array(subset)
-            yield subset
-
-
-def brute_force_search_subset(intlist, early_return=False):
-    candidates = []
-    for indices in generate_indices_subsets(len(intlist)):
+def _search_subset(intlist):
+    def generate_candidate_indices(intlist):
+        argsort_indices = np.argsort(intlist)
+        for i in range(1, len(intlist) + 1):
+            yield argsort_indices[:i]
+    for indices in generate_candidate_indices(intlist):
         if _condition(indices, intlist):
-            if early_return:
-                return indices
-            candidates.append(indices)
-    if len(candidates) == 0:
-        raise RuntimeError("No candidates")
-    if len(candidates) > 1:
-        print("More than one candidate")
-    return candidates[0]
+            return indices
+    raise RuntimeError("No subset found")
+
+# def generate_indices_subsets(length):
+#     indices = list(range(length))
+#     for size in range(1, length + 1):
+#         for subset in itertools.combinations(indices, size):
+#             subset = np.array(subset)
+#             yield subset
+
+
+# def brute_force_search_subset(intlist, early_return=True):
+#     candidates = []
+#     for indices in generate_indices_subsets(len(intlist)):
+#         if _condition(indices, intlist):
+#             if early_return:
+#                 return indices
+#             candidates.append(indices)
+#     if len(candidates) == 0:
+#         raise RuntimeError("No candidates")
+#     if len(candidates) > 1:
+#         print("More than one candidate")
+#     return candidates[0]
+
+
+# Assuming the input distribution is sampled uniformly from the input ball, this
+# will be the average of the empirical loss
+def make_population_loss_fn(true_param, do_jit=True):
+    true_matrices = jtree.tree_leaves(true_param)
+    true_prod = jnp.linalg.multi_dot(true_matrices)
+    input_dim = true_matrices[0].shape[0]
+    output_dim = true_matrices[0].shape[-1]
+    def population_loss(param):
+        prod = jnp.linalg.multi_dot(jtree.tree_leaves(param))
+        Q = true_prod - prod
+        return jnp.linalg.norm(Q, ord="fro")**2 / ((input_dim+2) * output_dim)
+    if do_jit:
+        return jax.jit(population_loss)
+    else:
+        return population_loss

@@ -14,6 +14,7 @@ jupyter = "*"
 sacred = "*"
 plotly = "*"
 pymongo = "*"
+numpyro = "*"
 
 [dev-packages]
 

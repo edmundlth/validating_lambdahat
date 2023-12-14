@@ -16,6 +16,7 @@ from utils import (
     rand_reduce_matrix_rank, 
     create_random_matrix_with_rank, 
     get_singular_values,
+    param_lp_dist,
 )
 from sgld_utils import SGLDConfig, optim_sgld, create_local_logposterior, generate_rngkey_tree
 
@@ -36,6 +37,7 @@ def cfg():
     }
     layer_widths = [10, 10]
     input_dim = 10
+    input_dist = "uniform" # uniform / unit_ball
     true_param_config = {
         "method": "random", # random / zero / rand_rank / rand_rank_sv
         "prop_rank_reduce": 0.2, # rand_rank, proportion of matrices selected to have random rank. 
@@ -49,7 +51,7 @@ def cfg():
     verbose=False
 
 
-def initialise_expt(rngkey, layer_widths, input_dim, num_training_data, true_param_config):
+def initialise_expt(rngkey, layer_widths, input_dim, input_dist, num_training_data, true_param_config):
     """
     Handles complex initialisation procedure for various objects required for the experiments.
     """
@@ -91,9 +93,9 @@ def initialise_expt(rngkey, layer_widths, input_dim, num_training_data, true_par
     else:
         raise RuntimeError(f"Unsupported true parameter config: {true_param_config}")
     # create training data
-    x_train, y_train = generate_training_data(true_param, model, input_dim, num_training_data)
+    x_train, y_train = generate_training_data(true_param, model, input_dim, num_training_data, input_dist=input_dist)
     
-    return model, true_param, x_train, y_train,
+    return model, true_param, x_train, y_train
 
 
 @ex.automain
@@ -102,6 +104,7 @@ def run_experiment(
     sgld_config, 
     layer_widths,
     input_dim,
+    input_dist,
     true_param_config,
     num_training_data, 
     itemp, 
@@ -115,12 +118,14 @@ def run_experiment(
     ####################
     # Initialisations
     ####################
+    # for model
     sgld_config = SGLDConfig(**sgld_config)
     rngkey, subkey = jax.random.split(rngkey)
     model, true_param, x_train, y_train = initialise_expt(
         subkey, 
         layer_widths, 
         input_dim, 
+        input_dist,
         num_training_data, 
         true_param_config
     )
@@ -143,16 +148,16 @@ def run_experiment(
     # SGLD loop
     ####################
     loss_trace = []
-    nlls = []
+    distances = []
     opt_state = sgldoptim.init(param_init)
     param = param_init
     t = 0
     while t < sgld_config.num_steps:
         for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size):
             nll, grads = sgld_grad_fn(param, x_batch, y_batch)
-            nlls.append(float(nll))
             updates, opt_state = sgldoptim.update(grads, opt_state)
             param = optax.apply_updates(param, updates)
+            distances.append(param_lp_dist(true_param, param, ord=2))
             loss_trace.append(loss_fn(param, x_train, y_train))
             t += 1
     
@@ -163,12 +168,13 @@ def run_experiment(
     # compute lambdahat from loss trace
     init_loss = loss_fn(param_init, x_train, y_train)
     lambdahat = (np.mean(loss_trace) - init_loss) * num_training_data * itemp
-
+    
 
     _run.info.update(to_json_friendly_tree({
         "lambdahat": lambdahat,
         "loss_trace": loss_trace,
         "init_loss": init_loss,
+        "sgld_distances": distances,
     }))
 
     # Computing true lambda
@@ -177,14 +183,17 @@ def run_experiment(
     )
 
     true_rank = jnp.linalg.matrix_rank(true_matrix)
-    true_lambda = true_dln_learning_coefficient(true_rank, layer_widths, input_dim, verbose=verbose)
+    true_lambda, true_multiplicity = true_dln_learning_coefficient(true_rank, layer_widths, input_dim, verbose=verbose)
+    model_dim = sum([np.prod(x.shape) for x in jtree.tree_leaves(true_param)])
 
     _run.info.update(to_json_friendly_tree(
         {
             "true_lambda": true_lambda, 
+            "true_multiplicity": true_multiplicity, 
             "true_rank": true_rank, 
             "true_param_singular_values": jtree.tree_map(get_singular_values, true_param),
-            "truth_check": np.allclose(model.apply(true_param, x_train), x_train @ true_matrix, atol=1e-4)
+            "truth_check": np.allclose(model.apply(true_param, x_train), x_train @ true_matrix, atol=1e-4),
+            "model_dim": model_dim,
         }
     ))
 

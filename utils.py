@@ -86,3 +86,9 @@ def get_singular_values(matrix):
     
     # S contains the singular values
     return S
+
+def param_lp_dist(param1, param2, ord=2):
+    return sum([
+        jnp.linalg.norm(x - y, ord=ord) 
+        for x, y in zip(jtree.tree_leaves(param1), jtree.tree_leaves(param2))
+    ])
