@@ -1,6 +1,7 @@
 import jax
 import jax.tree_util as jtree
 import jax.numpy as jnp
+import numpy as np
 
 def to_float_or_list(x):
     if isinstance(x, (float, int)):
@@ -92,3 +93,19 @@ def param_lp_dist(param1, param2, ord=2):
         jnp.linalg.norm(x - y, ord=ord) 
         for x, y in zip(jtree.tree_leaves(param1), jtree.tree_leaves(param2))
     ])
+
+
+def pack_params(params):
+    params_flat, treedef = jax.tree_util.tree_flatten(params)
+    shapes = [p.shape for p in params_flat]
+    indices = np.cumsum([p.size for p in params_flat])
+    params_packed = jnp.concatenate([jnp.ravel(p) for p in params_flat])
+    pack_info = (treedef, shapes, indices)
+    return params_packed, pack_info
+
+def unpack_params(params_packed, pack_info):
+    treedef, shapes, indices = pack_info
+    params_split = jnp.split(params_packed, indices)
+    params_flat = [jnp.reshape(p, shape) for p, shape in zip(params_split, shapes)]
+    params = jax.tree_util.tree_unflatten(treedef, params_flat)
+    return params

@@ -4,6 +4,8 @@ import jax.numpy as jnp
 import jax.tree_util as jtree
 import optax 
 from typing import NamedTuple
+from dln import create_minibatches
+from utils import param_lp_dist
 
 class SGLDConfig(NamedTuple):
   epsilon: float
@@ -11,6 +13,37 @@ class SGLDConfig(NamedTuple):
   num_steps: int
   num_chains: int = 1 
   batch_size: int = None
+
+
+def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None):
+    num_training_data = len(x_train)
+    if itemp is None:
+        itemp = 1 / jnp.log(num_training_data)
+    local_logprob = create_local_logposterior(
+        avgnegloglikelihood_fn=loss_fn,
+        num_training_data=num_training_data,
+        w_init=param_init,
+        gamma=sgld_config.gamma,
+        itemp=itemp,
+    )
+    sgld_grad_fn = jax.jit(jax.grad(lambda w, x, y: -local_logprob(w, x, y), argnums=0))
+    
+    sgldoptim = optim_sgld(sgld_config.epsilon, rngkey)
+    loss_trace = []
+    distances = []
+    opt_state = sgldoptim.init(param_init)
+    param = param_init
+    t = 0
+    while t < sgld_config.num_steps:
+        for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size):
+            grads = sgld_grad_fn(param, x_batch, y_batch)
+            updates, opt_state = sgldoptim.update(grads, opt_state)
+            param = optax.apply_updates(param, updates)
+            distances.append(param_lp_dist(param_init, param, ord=2))
+            loss_trace.append(loss_fn(param, x_train, y_train))
+            t += 1
+    return loss_trace, distances
+
 
 def generate_rngkey_tree(key_or_seed, tree_or_treedef):
     rngseq = hk.PRNGSequence(key_or_seed)

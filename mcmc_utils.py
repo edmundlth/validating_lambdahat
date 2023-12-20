@@ -44,3 +44,28 @@ def build_model(forward_fn, prior_center_tree, prior_std=1.0, sigma_obs=1.0):
         return 
     return model
 
+
+def mala_acceptance_probability(current_point, proposed_point, loss_and_grad_fn, step_size):
+    """
+    Calculate the acceptance probability for a MALA transition.
+
+    Args:
+    current_point: The current point in parameter space.
+    proposed_point: The proposed point in parameter space.
+    loss_and_grad_fn (function): Function to compute loss and loss gradient at a point.
+    step_size (float): Step size parameter for MALA.
+
+    Returns:
+    float: Acceptance probability for the proposed transition.
+    """
+    # Compute the gradient of the loss at the current point
+    current_loss, current_grad = loss_and_grad_fn(current_point)
+    proposed_loss, proposed_grad = loss_and_grad_fn(proposed_point)
+
+    # Compute the log of the proposal probabilities (using the Gaussian proposal distribution)
+    log_q_proposed_to_current = -jnp.sum((current_point - proposed_point - (step_size * 0.5 * -proposed_grad)) ** 2) / (2 * step_size)
+    log_q_current_to_proposed = -jnp.sum((proposed_point - current_point - (step_size * 0.5 * -current_grad)) ** 2) / (2 * step_size)
+
+    # Compute the acceptance probability
+    acceptance_log_prob = log_q_proposed_to_current - log_q_current_to_proposed + current_loss - proposed_loss
+    return jnp.minimum(1.0, jnp.exp(acceptance_log_prob))
