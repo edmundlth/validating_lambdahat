@@ -15,7 +15,7 @@ class SGLDConfig(NamedTuple):
   batch_size: int = None
 
 
-def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None):
+def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True):
     num_training_data = len(x_train)
     if itemp is None:
         itemp = 1 / jnp.log(num_training_data)
@@ -40,7 +40,10 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
             updates, opt_state = sgldoptim.update(grads, opt_state)
             param = optax.apply_updates(param, updates)
             distances.append(param_lp_dist(param_init, param, ord=2))
-            loss_trace.append(loss_fn(param, x_train, y_train))
+            if trace_batch_loss:
+                loss_trace.append(loss_fn(param, x_batch, y_batch))
+            else:
+                loss_trace.append(loss_fn(param, x_train, y_train))
             t += 1
     return loss_trace, distances
 

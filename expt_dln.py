@@ -45,6 +45,7 @@ def cfg():
         "num_chains": 1, # TODO: not implemented chains
         "batch_size": 100
     }
+    loss_trace_minibatch = True # if True loss_trace uses minibatch, else use full dataset. 
     layer_widths = [10, 10]
     input_dim = 10
     input_dist = "uniform" # uniform / unit_ball
@@ -127,6 +128,7 @@ def initialise_expt(rngkey, layer_widths, input_dim, input_dist, num_training_da
 def run_experiment(
     _run, 
     sgld_config, 
+    loss_trace_minibatch,
     layer_widths,
     input_dim,
     input_dist,
@@ -189,7 +191,7 @@ def run_experiment(
     ####################
     param_init = true_param
     rngkey, subkey = jax.random.split(rngkey)
-    loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp)
+    loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch)
 
     # compute lambdahat from loss trace
     init_loss = loss_fn(param_init, x_train, y_train)
