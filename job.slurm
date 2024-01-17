@@ -15,7 +15,7 @@
 #SBATCH --cpus-per-task=2
 
 # The amount of memory in megabytes per node:
-#SBATCH --mem=16384
+#SBATCH --mem=8096
 
 # The maximum running time of the job in days-hours:mins:sec
 #SBATCH --time=0-1:00:00
@@ -33,11 +33,11 @@ fi
 # Run the job from the directory where it was launched (default)
 
 # The modules to load:
-module load python/3.9.5
+module load Python/3.10.4
 
 
 # Activate existing virtual environment
-source /path/to/virtualenv/bin/activate
+source /home/elau1/venv3.10/bin/activate
 
 ########## Script ###########
 CMD=$(sed -n "${SLURM_ARRAY_TASK_ID}p" commands.txt)
