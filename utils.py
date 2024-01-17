@@ -2,6 +2,10 @@ import jax
 import jax.tree_util as jtree
 import jax.numpy as jnp
 import numpy as np
+from scipy.special import logsumexp
+from scipy.stats import linregress
+
+
 
 def to_float_or_list(x):
     if isinstance(x, (float, int)):
@@ -25,14 +29,13 @@ def reduce_matrix_rank(matrix, reduction):
     :param reduction: The amount by which the rank should be reduced.
     :return: A matrix similar to the input but with reduced rank.
     """
-    U, S, Vh = jnp.linalg.svd(matrix, full_matrices=False)
-
+    U, S, Vh = np.linalg.svd(matrix, full_matrices=False)
     # Reduce the number of non-zero singular values by 'reduction'
     new_rank = max(len(S) - reduction, 0)
     S[new_rank:] = 0
-
     # Reconstruct the matrix with the reduced number of singular values
-    reduced_matrix = jnp.dot(U * S, Vh)
+    reduced_matrix = np.dot(U * S, Vh)
+    # print(np.linalg.matrix_rank(reduced_matrix), np.linalg.matrix_rank(matrix), reduction)
     return reduced_matrix
 
 def rand_reduce_matrix_rank(rngkey, matrix):
@@ -109,3 +112,64 @@ def unpack_params(params_packed, pack_info):
     params_flat = [jnp.reshape(p, shape) for p, shape in zip(params_split, shapes)]
     params = jax.tree_util.tree_unflatten(treedef, params_flat)
     return params
+
+
+def make_hessian_vector_prod_fn(func, x_test, jit=True):
+    def hvp(v):
+        return jax.grad(lambda x: jnp.dot(jax.grad(func)(x), v))(x_test)
+    if jit:
+        return jax.jit(hvp)
+    else:
+        return hvp    
+
+def hessian_trace_estimate(rng_key, hvp, dimension, num_samples=100):
+    # Use Rademacher distribution and Hutchinson's method
+    z_samples = (jax.random.randint(rng_key, (num_samples, dimension), 0, 2) * 2) - 1
+    trace_estimates = jax.vmap(lambda z: jnp.dot(z, hvp(z)))(z_samples)
+    # Average over all samples
+    return jnp.mean(trace_estimates)
+
+
+def stable_weighted_average(Ls, n, delta_beta, factor=None):
+    """
+    Compute: 1/m \sum_{j = 1}^m n Ls[j] exp(- delta_beta * n * Ls[j])
+    """
+    m = len(Ls)
+    Ls = np.array(Ls)
+    log_terms = - delta_beta * n * Ls
+    if factor is not None:
+        log_terms += np.log(factor)
+    average = np.exp(logsumexp(log_terms) - np.log(m))
+    return average
+
+def extrapolated_wbic(losses, n, itemp1, itemp2):
+    delta_beta = itemp2 - itemp1
+    numerator = stable_weighted_average(losses, n, delta_beta, factor=n * losses)
+    normalisation = stable_weighted_average(losses, n, delta_beta)
+    return numerator / normalisation
+    
+def extrapolated_multiitemp_lambdahat(losses, n, itemp_og, num_extrapolation=5, return_full=False):
+    itemps = linspaced_itemps_by_n(n, num_extrapolation)
+    wbics = [
+        extrapolated_wbic(losses, n, itemp_og, itemp_new) for itemp_new in itemps
+    ]
+    result = linregress(1 / itemps, wbics)
+    if return_full: 
+        return result
+    else:
+        return result.slope
+
+
+def linspaced_itemps_by_n(n, num_itemps):
+    """
+    Returns a 1D numpy array of length `num_itemps` that contains `num_itemps`
+    evenly spaced inverse temperatures between the values calculated from the
+    formula 1/log(n) * (1 - 1/sqrt(2log(n))) and 1/log(n) * (1 + 1/sqrt(2ln(n))).
+    The formula is used in the context of simulating the behavior of a physical
+    system at different temperatures using the Metropolis-Hastings algorithm.
+    """
+    return np.linspace(
+        1 / np.log(n) * (1 - 1 / np.sqrt(2 * np.log(n))),
+        1 / np.log(n) * (1 + 1 / np.sqrt(2 * np.log(n))),
+        num_itemps,
+    )

@@ -6,7 +6,12 @@ import jax.tree_util as jtree
 import numpy as np
 from typing import Sequence
 import itertools
-
+from utils import (
+    unpack_params, 
+    pack_params, 
+    make_hessian_vector_prod_fn, 
+    hessian_trace_estimate
+)
 
 # Define the DLN model
 class DeepLinearNetwork(hk.Module):
@@ -152,3 +157,14 @@ def make_population_loss_fn(true_param, do_jit=True):
         return jax.jit(population_loss)
     else:
         return population_loss
+
+
+
+def get_dln_hessian_trace_estimate(rngkey, param, loss_fn, x_test, y_test):
+    param_packed, pack_info = pack_params(param)
+    @jax.jit
+    def _helper_loss_fn(param_packed):
+        return loss_fn(unpack_params(param_packed, pack_info), x_test, y_test)
+
+    hvp_fn = make_hessian_vector_prod_fn(_helper_loss_fn, param_packed, jit=True)
+    return hessian_trace_estimate(rngkey, hvp_fn, param_packed.shape[0])

@@ -10,6 +10,8 @@ from dln import (
     true_dln_learning_coefficient, 
     mse_loss, 
     generate_training_data,
+    get_dln_hessian_trace_estimate, 
+    make_population_loss_fn
 )
 from utils import (
     to_json_friendly_tree, 
@@ -21,7 +23,10 @@ from utils import (
     unpack_params
 )
 from sgld_utils import (
-    SGLDConfig, optim_sgld, create_local_logposterior, generate_rngkey_tree, 
+    SGLDConfig, 
+    optim_sgld, 
+    create_local_logposterior, 
+    generate_rngkey_tree, 
     run_sgld
 )
 
@@ -53,6 +58,7 @@ def cfg():
     param_init = None
     num_training_data = 10000
     itemp = 1 / np.log(num_training_data)
+    num_test_data = 100
 
     training_config = {
         "optim": "sgd", 
@@ -64,6 +70,7 @@ def cfg():
     do_training = False
     do_functional_rank = False
     seed = 0
+    save_true_param = False
     verbose=False
 
 
@@ -82,30 +89,32 @@ def initialise_expt(rngkey, layer_widths, input_dim, input_dist, num_training_da
     elif true_param_config["method"] == "rand_rank":
         # randomly reduce rank of random matrices at a given rate
         rate = true_param_config["prop_rank_reduce"]
-        jtree.tree_map(
-            lambda x: rand_reduce_matrix_rank(x) if np.random.rand() < rate else x, 
+        rngkey, subkey = jax.random.split(rngkey)
+        true_param = jtree.tree_map(
+            lambda x: rand_reduce_matrix_rank(rngkey, x) if np.random.rand() < rate else x, 
             true_param
         ) 
     elif true_param_config["method"] == "rand_rank_sv":
         # randomly reduce rank of random matrices at a given rate with singular values drawn from gaussian
         rate = true_param_config["prop_rank_reduce"]
-        def _helper(rngkey, x):
+        param_flat, treedef = jtree.tree_flatten(true_param)
+        for i in range(len(param_flat)): 
+            matrix = param_flat[i]
             rngkey, subkey = jax.random.split(rngkey)
             if jax.random.uniform(rngkey, shape=()) < rate:
                 rngkey, subkey = jax.random.split(rngkey)
-                rank = int(jax.random.randint(subkey, shape=(), minval=0, maxval=min(x.shape)))
+                rank = int(jax.random.randint(subkey, shape=(), minval=0, maxval=min(matrix.shape)))
             else:
-                rank = min(x.shape) # i.e. full rank
+                rank = min(matrix.shape) # i.e. full rank
             rngkey, subkey = jax.random.split(rngkey)
-            return create_random_matrix_with_rank(
+            param_flat[i] = create_random_matrix_with_rank(
                 rngkey, 
-                x.shape, 
+                matrix.shape, 
                 rank=rank, 
                 mean=true_param_config["mean"], 
                 std=true_param_config["std"]
             )
-        rngkey, subkey = jax.random.split(rngkey)
-        jtree.tree_map(_helper, generate_rngkey_tree(subkey, true_param), true_param)
+        true_param = jtree.tree_unflatten(treedef, param_flat)
     else:
         raise RuntimeError(f"Unsupported true parameter config: {true_param_config}")
     # create training data
@@ -123,11 +132,13 @@ def run_experiment(
     input_dist,
     true_param_config,
     num_training_data, 
+    num_test_data,
     itemp, 
     training_config,
     do_training, 
     do_functional_rank,
     seed,
+    save_true_param,
     verbose,
 ):
     # seeding
@@ -211,14 +222,28 @@ def run_experiment(
             "sgld_distances": distances,
         })
 
+    ############################################################
+    # Information about the true model itself
+    ############################################################
 
     # Computing true lambda
     true_matrix = jnp.linalg.multi_dot(
         [true_param[f'deep_linear_network/linear{loc}']['w'] for loc in [''] + [f'_{i}' for i in range(1, len(layer_widths))]]
     )
     true_rank = jnp.linalg.matrix_rank(true_matrix)
-    true_lambda, true_multiplicity = true_dln_learning_coefficient(true_rank, layer_widths, input_dim, verbose=verbose)
+    true_lambda, true_multiplicity = true_dln_learning_coefficient(
+        true_rank, 
+        layer_widths, 
+        input_dim, 
+        verbose=verbose
+    )
     model_dim = sum([np.prod(x.shape) for x in jtree.tree_leaves(true_param)])
+
+    # Hessian trace
+    print("Calculating estimated hessian trace.")
+    x_small, y_small = generate_training_data(true_param, model, input_dim, num_test_data)
+    rngkey, subkey = jax.random.split(rngkey)
+    est_hess_trace = float(get_dln_hessian_trace_estimate(rngkey, true_param, loss_fn, x_small, y_small))
 
     _run.info.update(to_json_friendly_tree(
         {
@@ -229,6 +254,7 @@ def run_experiment(
             "true_param_singular_values": jtree.tree_map(get_singular_values, true_param),
             "truth_check": np.allclose(model.apply(true_param, x_train), x_train @ true_matrix, atol=1e-4),
             "model_dim": model_dim,
+            "hessian_trace_estimate": est_hess_trace
         }
     ))
 
@@ -236,9 +262,9 @@ def run_experiment(
     # Jacobian rank
     ####################
     if do_functional_rank:
-        n_small = 100
+        print("Calculating functional rank...")
         threshold = 0.001
-        x_small, y_small = generate_training_data(true_param, model, input_dim, n_small)
+        x_small, y_small = generate_training_data(true_param, model, input_dim, num_test_data)
         true_param_packed, pack_info = pack_params(true_param)
         fwd_fn = jax.jit(lambda p_packed: jnp.ravel(model.apply(unpack_params(p_packed, pack_info), x_small)))
         jacobian_matrix = np.asarray(jax.jacfwd(fwd_fn)(true_param_packed))
@@ -249,7 +275,9 @@ def run_experiment(
             "singular_values": svdvals,
             "functional_rank": int(np.sum(svdvals > threshold)), 
             "threshold": threshold, 
-            "num_data_used": n_small
         })
+
+    if save_true_param: 
+        _run.info["true_param"] = to_json_friendly_tree(true_param)
 
     return

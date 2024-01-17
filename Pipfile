@@ -15,6 +15,7 @@ sacred = "*"
 plotly = "*"
 pymongo = "*"
 numpyro = "*"
+kaleido = "*"
 
 [dev-packages]
 

@@ -17,33 +17,34 @@ def run_commands_parallel(commands, max_workers):
 
 current_time = datetime.datetime.now()
 datetime_str = current_time.strftime("%Y%m%d%H%M")
-# EXPT_NAME = "dev"
+# EXPT_NAME = "dev_large"
 # DB_NAME = "dln_lambdahat_dev"
-
 # EXPT_NAME = f"zero_batch500_width10-50_layer2-15_withtraining_{datetime_str}"
-EXPT_NAME = f"randsv_batch500_width15_layer2-5_notraining_funcrank_{datetime_str}"
+# EXPT_NAME = f"randsv_batch500_width15_layer2-5_notraining_funcrank_{datetime_str}"
+# EXPT_NAME = f"randrank_batch500_width10-30_layer5_notraining_funcrank_hesstrace_{datetime_str}"
+EXPT_NAME = f"randrank_batch500_width10-50_layer2-15_withtraining_prank0.2_{datetime_str}"
 DB_NAME = "dln_lambdahat"
 
+
+
+
+
 SGLD_EPSILON = 5e-6
-SGLD_NUMSTEPS = 10000
+SGLD_NUMSTEPS = 20000
 SGLD_BATCH_SIZE = 500
-PROP_RANK_REDUCE = 0.8
+SGLD_GAMMA = 1.0
+PROP_RANK_REDUCE = 0.2
 COMMANDS = []
 TRUE_PARAM_METHOD = "rand_rank"  # 'zero' / 'rand_rank' / rand_rank_sv / random
-DO_TRAINING = False
-DO_FUNCTIONAL_RANK = True
+DO_TRAINING = True
+DO_FUNCTIONAL_RANK = False
 NUM_SEEDS = 100
 
-num_layer = 15
-layer_widths = list(np.random.randint(2, 20, size=num_layer))
-input_dim = np.random.randint(2, 20)
 
 for seed_i in range(NUM_SEEDS):
-    # num_layer = np.random.randint(2, 5)
-    # num_layer = 5
-    # for width in range(11, 20):
-    #     layer_widths = [width] * num_layer
-    #     input_dim = width
+    num_layer = np.random.randint(2, 15)
+    layer_widths = list(np.random.randint(10, 50, size=num_layer))
+    input_dim = np.random.randint(10, 50)
     
     cmd = [
         f"python expt_dln.py -m localhost:27017:{DB_NAME} with",
@@ -54,6 +55,7 @@ for seed_i in range(NUM_SEEDS):
         f"true_param_config.prop_rank_reduce={PROP_RANK_REDUCE}",
         f"sgld_config.epsilon={SGLD_EPSILON}",
         f"sgld_config.num_steps={SGLD_NUMSTEPS}",
+        f"sgld_config.gamma={SGLD_GAMMA}",
         f"sgld_config.batch_size={SGLD_BATCH_SIZE}",
         f"do_training={DO_TRAINING}",
         f"do_functional_rank={DO_FUNCTIONAL_RANK}",
