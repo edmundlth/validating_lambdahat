@@ -46,6 +46,7 @@ def cfg():
         "batch_size": 100
     }
     loss_trace_minibatch = True # if True loss_trace uses minibatch, else use full dataset. 
+    do_compute_distance = False # if True, log distance of SGLD samples from initial point. 
     layer_widths = [10, 10]
     input_dim = 10
     input_dist = "uniform" # uniform / unit_ball
@@ -129,6 +130,7 @@ def run_experiment(
     _run, 
     sgld_config, 
     loss_trace_minibatch,
+    do_compute_distance,
     layer_widths,
     input_dim,
     input_dist,
@@ -191,7 +193,7 @@ def run_experiment(
     ####################
     param_init = true_param
     rngkey, subkey = jax.random.split(rngkey)
-    loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch)
+    loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance)
 
     # compute lambdahat from loss trace
     init_loss = loss_fn(param_init, x_train, y_train)
@@ -210,7 +212,7 @@ def run_experiment(
     if do_training:
         param_init = trained_param
         rngkey, subkey = jax.random.split(rngkey)
-        loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp)
+        loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance)
 
         # compute lambdahat from loss trace
         init_loss = loss_fn(param_init, x_train, y_train)
