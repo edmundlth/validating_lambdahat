@@ -165,29 +165,6 @@ def run_experiment(
     )
     loss_fn = jax.jit(lambda param, inputs, targets: mse_loss(param, model, inputs, targets))
     
-    ########################################
-    # Train the model if specified
-    ########################################
-    if do_training:
-        optimizer = optax.sgd(
-            learning_rate=training_config["learning_rate"], 
-            momentum=training_config["momentum"]
-        )
-        max_steps = training_config["num_steps"]
-        t = 0
-        rngkey, subkey = jax.random.split(rngkey)
-        grad_fn = jax.jit(jax.grad(loss_fn, argnums=0))
-        trained_param = model.init(rngkey, jnp.zeros((1, input_dim)))
-        opt_state = optimizer.init(trained_param)
-        while t < max_steps:
-            for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=training_config["batch_size"]):
-                grads = grad_fn(trained_param, x_batch, y_batch)
-                updates, opt_state = optimizer.update(grads, opt_state)
-                trained_param = optax.apply_updates(trained_param, updates)
-                t += 1
-                if t >= max_steps:
-                    break
-
     ####################
     # SGLD lambdahat
     ####################
@@ -205,12 +182,37 @@ def run_experiment(
         "loss_trace": loss_trace,
         "init_loss": init_loss,
         "sgld_distances": distances,
-        "mala_acceptance_probs": acceptance_probs
+        "mala_acceptance_probs": np.array(acceptance_probs).tolist()
     }))
 
+    ########################################
+    # Train the model if specified
+    ########################################
     
-    # do SGLD sampling centred on trained parameter if there is one. 
     if do_training:
+        optimizer = optax.sgd(
+            learning_rate=training_config["learning_rate"], 
+            momentum=training_config["momentum"]
+        )
+        max_steps = training_config["num_steps"]
+        t = 0
+        rngkey, subkey = jax.random.split(rngkey)
+        grad_fn = jax.jit(jax.value_and_grad(loss_fn, argnums=0))
+        trained_param = model.init(rngkey, jnp.zeros((1, input_dim)))
+        opt_state = optimizer.init(trained_param)
+        training_losses = []
+        while t < max_steps:
+            for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=training_config["batch_size"]):
+                train_loss, grads = grad_fn(trained_param, x_batch, y_batch)
+                updates, opt_state = optimizer.update(grads, opt_state)
+                trained_param = optax.apply_updates(trained_param, updates)
+                t += 1
+                if t >= max_steps:
+                    break
+                if t % 50 == 0: # TODO: parametrise 
+                    training_losses.append(train_loss)
+
+    
         param_init = trained_param
         rngkey, subkey = jax.random.split(rngkey)
         loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance)
@@ -225,7 +227,8 @@ def run_experiment(
             "loss_trace": loss_trace,
             "init_loss": init_loss,
             "sgld_distances": distances,
-            "mala_acceptance_probs": acceptance_probs,
+            "mala_acceptance_probs": np.array(acceptance_probs).tolist(),
+            "training_losses": training_losses,
         })
 
     ############################################################
