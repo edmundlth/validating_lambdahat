@@ -71,6 +71,7 @@ def cfg():
     }
     do_training = False
     do_functional_rank = False
+    do_hessian_trace = False
     seed = 0
     save_true_param = False
     verbose=False
@@ -141,6 +142,7 @@ def run_experiment(
     training_config,
     do_training, 
     do_functional_rank,
+    do_hessian_trace,
     seed,
     save_true_param,
     verbose,
@@ -248,12 +250,6 @@ def run_experiment(
     )
     model_dim = sum([np.prod(x.shape) for x in jtree.tree_leaves(true_param)])
 
-    # Hessian trace
-    print("Calculating estimated hessian trace.")
-    x_small, y_small = generate_training_data(true_param, model, input_dim, num_test_data)
-    rngkey, subkey = jax.random.split(rngkey)
-    est_hess_trace = float(get_dln_hessian_trace_estimate(rngkey, true_param, loss_fn, x_small, y_small))
-
     _run.info.update(to_json_friendly_tree(
         {
             "true_lambda": true_lambda, 
@@ -263,9 +259,16 @@ def run_experiment(
             "true_param_singular_values": jtree.tree_map(get_singular_values, true_param),
             "truth_check": np.allclose(model.apply(true_param, x_train), x_train @ true_matrix, atol=1e-4),
             "model_dim": model_dim,
-            "hessian_trace_estimate": est_hess_trace
         }
     ))
+
+    # Hessian trace
+    if do_hessian_trace:
+        print("Calculating estimated hessian trace.")
+        x_small, y_small = generate_training_data(true_param, model, input_dim, num_test_data)
+        rngkey, subkey = jax.random.split(rngkey)
+        est_hess_trace = float(get_dln_hessian_trace_estimate(rngkey, true_param, loss_fn, x_small, y_small))
+        _run.info["hessian_trace_estimate"] = est_hess_trace
 
     ####################
     # Jacobian rank

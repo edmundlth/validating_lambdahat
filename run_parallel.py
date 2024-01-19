@@ -18,9 +18,8 @@ def run_commands_parallel(commands, max_workers):
 
 current_time = datetime.datetime.now()
 datetime_str = current_time.strftime("%Y%m%d%H%M")
+# DB_NAME = "dln_lambdahat_dev"
 DB_NAME = "dln_lambdahat"
-# SACRED_OBSERVER = "-m localhost:27017:{DB_NAME}"
-SACRED_OBSERVER = f"-F ./outputs/{datetime_str}/"
 
 
 SGLD_EPSILON = 1e-7
@@ -29,21 +28,24 @@ SGLD_BATCH_SIZE = 500
 SGLD_GAMMA = 1.0
 PROP_RANK_REDUCE = 0.5
 COMMANDS = []
-TRUE_PARAM_METHOD = "random"  # 'zero' / 'rand_rank' / rand_rank_sv / random
+TRUE_PARAM_METHOD = "rand_rank"  # 'zero' / 'rand_rank' / rand_rank_sv / random
 DO_TRAINING = True
 DO_FUNCTIONAL_RANK = False
+DO_HESSIAN_TRACE = False
 NUM_SEEDS = 100
-WIDTHMIN, WIDTHMAX = 100, 500
-NLAYERMIN, NLAYERMAX = 2, 15
+WIDTHMIN, WIDTHMAX = 500, 1000
+NLAYERMIN, NLAYERMAX = 2, 20
 
 
 # EXPT_NAME = "dev_large"
-# DB_NAME = "dln_lambdahat_dev"
 # EXPT_NAME = f"zero_batch500_width10-50_layer2-15_withtraining_{datetime_str}"
 # EXPT_NAME = f"randsv_batch500_width15_layer2-5_notraining_funcrank_{datetime_str}"
 # EXPT_NAME = f"randrank_batch500_width10-30_layer5_notraining_funcrank_hesstrace_{datetime_str}"
 EXPT_NAME = f"{TRUE_PARAM_METHOD}_batch{SGLD_BATCH_SIZE}_width{WIDTHMIN}-{WIDTHMAX}_layer{NLAYERMIN}-{NLAYERMAX}_train{DO_TRAINING}_{datetime_str}"
 
+
+# SACRED_OBSERVER = "-m localhost:27017:{DB_NAME}"
+SACRED_OBSERVER = f"-F ./outputs/{EXPT_NAME}/"
 
 
 for seed_i in range(NUM_SEEDS):
@@ -68,6 +70,7 @@ for seed_i in range(NUM_SEEDS):
         f"training_config.batch_size=500",
         f"training_config.num_steps=10000",
         f"do_functional_rank={DO_FUNCTIONAL_RANK}",
+        f"do_hessian_trace={DO_HESSIAN_TRACE}",
         f"seed={seed_i}"
     ]
     COMMANDS.append(" ".join(cmd))
