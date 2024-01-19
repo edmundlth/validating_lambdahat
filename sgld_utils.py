@@ -50,7 +50,7 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
         gamma=sgld_config.gamma,
         itemp=itemp,
     )
-    sgld_grad_fn = jax.jit(jax.grad(lambda w, x, y: -local_logprob(w, x, y), argnums=0))
+    sgld_grad_fn = jax.jit(jax.value_and_grad(lambda w, x, y: -local_logprob(w, x, y), argnums=0))
     
     sgldoptim = optim_sgld(sgld_config.epsilon, rngkey)
     loss_trace = []
@@ -62,7 +62,7 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
     while t < sgld_config.num_steps:
         for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size):
             old_param = param.copy()
-            grads = sgld_grad_fn(param, x_batch, y_batch)
+            _, grads = sgld_grad_fn(param, x_batch, y_batch)
             updates, opt_state = sgldoptim.update(grads, opt_state)
             param = optax.apply_updates(param, updates)
             if compute_distance: 
