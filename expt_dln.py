@@ -193,7 +193,7 @@ def run_experiment(
     ####################
     param_init = true_param
     rngkey, subkey = jax.random.split(rngkey)
-    loss_trace, distances = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance)
+    loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance)
 
     # compute lambdahat from loss trace
     init_loss = loss_fn(param_init, x_train, y_train)
@@ -205,6 +205,7 @@ def run_experiment(
         "loss_trace": loss_trace,
         "init_loss": init_loss,
         "sgld_distances": distances,
+        "mala_acceptance_probs": acceptance_probs
     }))
 
     

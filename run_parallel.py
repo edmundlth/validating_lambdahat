@@ -18,35 +18,38 @@ def run_commands_parallel(commands, max_workers):
 
 current_time = datetime.datetime.now()
 datetime_str = current_time.strftime("%Y%m%d%H%M")
-# EXPT_NAME = "dev_large"
-# DB_NAME = "dln_lambdahat_dev"
-# EXPT_NAME = f"zero_batch500_width10-50_layer2-15_withtraining_{datetime_str}"
-# EXPT_NAME = f"randsv_batch500_width15_layer2-5_notraining_funcrank_{datetime_str}"
-# EXPT_NAME = f"randrank_batch500_width10-30_layer5_notraining_funcrank_hesstrace_{datetime_str}"
-EXPT_NAME = f"rand_batch500_width100-500_layer2-15_withtraining_{datetime_str}"
 DB_NAME = "dln_lambdahat"
-
-
 # SACRED_OBSERVER = "-m localhost:27017:{DB_NAME}"
 SACRED_OBSERVER = f"-F ./outputs/{datetime_str}/"
 
 
 SGLD_EPSILON = 1e-7
-SGLD_NUMSTEPS = 20000
+SGLD_NUMSTEPS = 50000
 SGLD_BATCH_SIZE = 500
 SGLD_GAMMA = 1.0
 PROP_RANK_REDUCE = 0.5
 COMMANDS = []
 TRUE_PARAM_METHOD = "random"  # 'zero' / 'rand_rank' / rand_rank_sv / random
-DO_TRAINING = False
+DO_TRAINING = True
 DO_FUNCTIONAL_RANK = False
 NUM_SEEDS = 100
+WIDTHMIN, WIDTHMAX = 100, 500
+NLAYERMIN, NLAYERMAX = 2, 15
+
+
+# EXPT_NAME = "dev_large"
+# DB_NAME = "dln_lambdahat_dev"
+# EXPT_NAME = f"zero_batch500_width10-50_layer2-15_withtraining_{datetime_str}"
+# EXPT_NAME = f"randsv_batch500_width15_layer2-5_notraining_funcrank_{datetime_str}"
+# EXPT_NAME = f"randrank_batch500_width10-30_layer5_notraining_funcrank_hesstrace_{datetime_str}"
+EXPT_NAME = f"{TRUE_PARAM_METHOD}_batch{SGLD_BATCH_SIZE}_width{WIDTHMIN}-{WIDTHMAX}_layer{NLAYERMIN}-{NLAYERMAX}_train{DO_TRAINING}_{datetime_str}"
+
 
 
 for seed_i in range(NUM_SEEDS):
-    num_layer = np.random.randint(2, 15)
-    layer_widths = list(np.random.randint(100, 500, size=num_layer))
-    input_dim = np.random.randint(100, 500)
+    num_layer = np.random.randint(NLAYERMIN, NLAYERMAX)
+    layer_widths = list(np.random.randint(WIDTHMIN, WIDTHMAX, size=num_layer))
+    input_dim = np.random.randint(WIDTHMIN, WIDTHMAX)
     
     cmd = [
         f"python expt_dln.py {SACRED_OBSERVER} with",
@@ -60,6 +63,10 @@ for seed_i in range(NUM_SEEDS):
         f"sgld_config.gamma={SGLD_GAMMA}",
         f"sgld_config.batch_size={SGLD_BATCH_SIZE}",
         f"do_training={DO_TRAINING}",
+        f"training_config.optim='adam'",
+        f"training_config.learning_rate=0.01",
+        f"training_config.batch_size=500",
+        f"training_config.num_steps=10000",
         f"do_functional_rank={DO_FUNCTIONAL_RANK}",
         f"seed={seed_i}"
     ]

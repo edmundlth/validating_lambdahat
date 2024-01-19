@@ -5,7 +5,7 @@ import jax.tree_util as jtree
 import optax 
 from typing import NamedTuple
 from dln import create_minibatches
-from utils import param_lp_dist
+from utils import param_lp_dist, pack_params, unpack_params
 
 class SGLDConfig(NamedTuple):
   epsilon: float
@@ -14,6 +14,30 @@ class SGLDConfig(NamedTuple):
   num_chains: int = 1 
   batch_size: int = None
 
+def mala_acceptance_probability(current_point, proposed_point, loss_and_grad_fn, step_size):
+    """
+    Calculate the acceptance probability for a MALA transition.
+
+    Args:
+    current_point: The current point in parameter space.
+    proposed_point: The proposed point in parameter space.
+    loss_and_grad_fn (function): Function to compute loss and loss gradient at a point.
+    step_size (float): Step size parameter for MALA.
+
+    Returns:
+    float: Acceptance probability for the proposed transition.
+    """
+    # Compute the gradient of the loss at the current point
+    current_loss, current_grad = loss_and_grad_fn(current_point)
+    proposed_loss, proposed_grad = loss_and_grad_fn(proposed_point)
+
+    # Compute the log of the proposal probabilities (using the Gaussian proposal distribution)
+    log_q_proposed_to_current = -jnp.sum((current_point - proposed_point - (step_size * 0.5 * -proposed_grad)) ** 2) / (2 * step_size)
+    log_q_current_to_proposed = -jnp.sum((proposed_point - current_point - (step_size * 0.5 * -current_grad)) ** 2) / (2 * step_size)
+
+    # Compute the acceptance probability
+    acceptance_log_prob = log_q_proposed_to_current - log_q_current_to_proposed + current_loss - proposed_loss
+    return jnp.minimum(1.0, jnp.exp(acceptance_log_prob))
 
 def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False):
     num_training_data = len(x_train)
@@ -31,11 +55,13 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
     sgldoptim = optim_sgld(sgld_config.epsilon, rngkey)
     loss_trace = []
     distances = []
+    accept_probs = []
     opt_state = sgldoptim.init(param_init)
     param = param_init
     t = 0
     while t < sgld_config.num_steps:
         for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size):
+            old_param = param.copy()
             grads = sgld_grad_fn(param, x_batch, y_batch)
             updates, opt_state = sgldoptim.update(grads, opt_state)
             param = optax.apply_updates(param, updates)
@@ -45,8 +71,24 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
                 loss_trace.append(loss_fn(param, x_batch, y_batch))
             else:
                 loss_trace.append(loss_fn(param, x_train, y_train))
+            if t % 20 == 0:
+                old_param_packed, pack_info = pack_params(old_param)
+                param_packed, _ = pack_params(param)
+                def grad_fn_packed(w):
+                    nll, grad = sgld_grad_fn(unpack_params(w, pack_info), x_batch, y_batch)
+                    grad_packed, _ = pack_params(grad)
+                    return nll, grad_packed
+                prob = mala_acceptance_probability(
+                    old_param_packed, 
+                    param_packed, 
+                    grad_fn_packed, 
+                    sgld_config.epsilon
+                )
+                accept_probs.append((t, prob))
+            if t % 200 == 0:
+                print(f"Step {t}, loss: {loss_trace[-1]}")
             t += 1
-    return loss_trace, distances
+    return loss_trace, distances, accept_probs
 
 
 def generate_rngkey_tree(key_or_seed, tree_or_treedef):

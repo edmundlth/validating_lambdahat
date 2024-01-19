@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Partition for the job:
-#SBATCH --partition=gpu-a100
+#SBATCH --partition=gpu-a100,gpu-a100-short,gpu-a100-preempt
 #SBATCH --gres=gpu:1
 
 # Multithreaded (SMP) job: must run on one node 
@@ -18,11 +18,11 @@
 #SBATCH --mem=8096
 
 # The maximum running time of the job in days-hours:mins:sec
-#SBATCH --time=0-1:00:00
+#SBATCH --time=0-2:00:00
 
 #SBATCH --output=./outputs/slurm_logs/slurm_%A_%a.out
 #SBATCH --error=./outputs/slurm_logs/slurm_%A_%a.err
-#SBATCH --array=1-10
+#SBATCH --array=1-100
 
 # check that the script is launched with sbatch
 if [ "x$SLURM_JOB_ID" == "x" ]; then
@@ -37,10 +37,10 @@ module load Python/3.10.4
 
 
 # Activate existing virtual environment
-source /home/elau1/venv3.10/bin/activate
+source /home/elau1/venvgpu3.10/bin/activate
 
 ########## Script ###########
-CMD=$(sed -n "${SLURM_ARRAY_TASK_ID}p" commands.txt)
+CMD=$(sed -n "${SLURM_ARRAY_TASK_ID}p" commands_random_truth.txt)
 echo "Executing command: $CMD"
 eval $CMD
 
