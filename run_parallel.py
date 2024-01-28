@@ -27,13 +27,14 @@ SGLD_NUMSTEPS = 50000
 SGLD_BATCH_SIZE = 500
 SGLD_GAMMA = 1.0
 PROP_RANK_REDUCE = 0.5
+NUMTRAININGDATA = 1000000
 COMMANDS = []
 TRUE_PARAM_METHOD = "rand_rank"  # 'zero' / 'rand_rank' / rand_rank_sv / random
 DO_TRAINING = True
 DO_FUNCTIONAL_RANK = False
 DO_HESSIAN_TRACE = False
 NUM_SEEDS = 100
-WIDTHMIN, WIDTHMAX = 500, 1000
+WIDTHMIN, WIDTHMAX = 50, 300
 NLAYERMIN, NLAYERMAX = 2, 20
 
 
@@ -41,7 +42,7 @@ NLAYERMIN, NLAYERMAX = 2, 20
 # EXPT_NAME = f"zero_batch500_width10-50_layer2-15_withtraining_{datetime_str}"
 # EXPT_NAME = f"randsv_batch500_width15_layer2-5_notraining_funcrank_{datetime_str}"
 # EXPT_NAME = f"randrank_batch500_width10-30_layer5_notraining_funcrank_hesstrace_{datetime_str}"
-EXPT_NAME = f"{TRUE_PARAM_METHOD}_batch{SGLD_BATCH_SIZE}_width{WIDTHMIN}-{WIDTHMAX}_layer{NLAYERMIN}-{NLAYERMAX}_train{DO_TRAINING}_{datetime_str}"
+EXPT_NAME = f"{TRUE_PARAM_METHOD}_batch{SGLD_BATCH_SIZE}_width{WIDTHMIN}-{WIDTHMAX}_layer{NLAYERMIN}-{NLAYERMAX}_train{DO_TRAINING}_n{NUMTRAININGDATA}_eps{SGLD_EPSILON}_nstep{SGLD_NUMSTEPS}_{datetime_str}"
 
 
 # SACRED_OBSERVER = "-m localhost:27017:{DB_NAME}"
@@ -56,6 +57,7 @@ for seed_i in range(NUM_SEEDS):
     cmd = [
         f"python expt_dln.py {SACRED_OBSERVER} with",
         f"expt_name='{EXPT_NAME}'",
+        f"num_training_data={NUMTRAININGDATA}",
         f"layer_widths='{layer_widths}'",
         f"input_dim={input_dim}",
         f"true_param_config.method='{TRUE_PARAM_METHOD}'",
@@ -68,7 +70,7 @@ for seed_i in range(NUM_SEEDS):
         f"training_config.optim='adam'",
         f"training_config.learning_rate=0.01",
         f"training_config.batch_size=500",
-        f"training_config.num_steps=10000",
+        f"training_config.num_steps=50000",
         f"do_functional_rank={DO_FUNCTIONAL_RANK}",
         f"do_hessian_trace={DO_HESSIAN_TRACE}",
         f"seed={seed_i}"

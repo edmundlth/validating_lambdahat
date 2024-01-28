@@ -212,7 +212,7 @@ def run_experiment(
                 if t >= max_steps:
                     break
                 if t % 50 == 0: # TODO: parametrise 
-                    training_losses.append(train_loss)
+                    training_losses.append([t, float(train_loss)])
 
     
         param_init = trained_param
