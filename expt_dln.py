@@ -171,12 +171,11 @@ def run_experiment(
     ####################
     # SGLD lambdahat
     ####################
-    param_init = true_param
     rngkey, subkey = jax.random.split(rngkey)
-    loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance, verbose=verbose)
+    loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, true_param, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance, verbose=verbose)
 
     # compute lambdahat from loss trace
-    init_loss = loss_fn(param_init, x_train, y_train)
+    init_loss = loss_fn(true_param, x_train, y_train)
     lambdahat = (np.mean(loss_trace) - init_loss) * num_training_data * itemp
     
     # record
@@ -216,12 +215,11 @@ def run_experiment(
                     training_losses.append([t, float(train_loss)])
 
     
-        param_init = trained_param
         rngkey, subkey = jax.random.split(rngkey)
-        loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance, verbose=verbose)
+        loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, trained_param, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance, verbose=verbose)
 
         # compute lambdahat from loss trace
-        init_loss = loss_fn(param_init, x_train, y_train)
+        init_loss = loss_fn(trained_param, x_train, y_train)
         lambdahat = (np.mean(loss_trace) - init_loss) * num_training_data * itemp
         
         # record

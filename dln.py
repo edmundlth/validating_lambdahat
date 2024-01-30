@@ -13,28 +13,42 @@ from utils import (
     hessian_trace_estimate
 )
 
+def normal_initializer(sigma):
+    def init(shape, dtype=jnp.float32):
+        return jax.random.normal(hk.next_rng_key(), shape, dtype) * sigma
+    return init
+
 # Define the DLN model
 class DeepLinearNetwork(hk.Module):
-    def __init__(self, layer_widths: Sequence[int], name: str = None, with_bias=False):
+    def __init__(self, layer_widths: Sequence[int], name: str = None, with_bias=False, sigma=None):
         super().__init__(name=name)
         self.layer_widths = layer_widths
         self.with_bias = with_bias
+        self.sigma = sigma
+        self.w_init = None
+        if self.sigma is not None:
+            self.w_init = normal_initializer(self.sigma)
 
     def __call__(self, x):
         for width in self.layer_widths:
-            x = hk.Linear(width, with_bias=self.with_bias)(x)
+            if self.w_init is not None:
+                x = hk.Linear(width, with_bias=self.with_bias, w_init=self.w_init)(x)
+            else:
+                x = hk.Linear(width, with_bias=self.with_bias)(x)
         return x
 
 
-def dln_forward_fn(x, layer_widths):
+def dln_forward_fn(x, layer_widths, sigma=None):
     # Function to initialize and apply the DLN model
-    net = DeepLinearNetwork(layer_widths)
+    net = DeepLinearNetwork(layer_widths, sigma=sigma)
     return net(x)
 
 
-def create_dln_model(layer_widths):
+def create_dln_model(layer_widths, sigma=None):
     """Create a Haiku-transformed version of the model"""
-    model = hk.without_apply_rng(hk.transform(lambda x: dln_forward_fn(x, layer_widths)))
+    model = hk.without_apply_rng(
+        hk.transform(lambda x: dln_forward_fn(x, layer_widths, sigma=sigma))
+    )
     return model
 
 
