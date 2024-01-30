@@ -121,7 +121,8 @@ def initialise_expt(rngkey, layer_widths, input_dim, input_dist, num_training_da
     else:
         raise RuntimeError(f"Unsupported true parameter config: {true_param_config}")
     # create training data
-    x_train, y_train = generate_training_data(true_param, model, input_dim, num_training_data, input_dist=input_dist)
+    rngkey, subkey = jax.random.split(rngkey)
+    x_train, y_train = generate_training_data(subkey, true_param, model, input_dim, num_training_data, input_dist=input_dist)
     
     return model, true_param, x_train, y_train
 

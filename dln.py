@@ -38,14 +38,17 @@ def create_dln_model(layer_widths):
     return model
 
 
-def generate_training_data(true_param, model, input_dim, num_samples, input_dist="uniform"):
+def generate_training_data(rngkey, true_param, model, input_dim, num_samples, input_dist="uniform"):
     if input_dist == "unit_ball":
         # Generate random inputs uniformly from the input ball
-        input_directions = np.random.normal(size=(num_samples, input_dim))
-        inputs = (np.random.rand(num_samples, 1)**(1/input_dim)) * (input_directions/np.linalg.norm(input_directions, axis=-1, keepdims=True))
+        rngkey, key = jax.random.split(rngkey)
+        input_directions = jax.random.normal(key, shape=(num_samples, input_dim))
+        rngkey, key = jax.random.split(rngkey)
+        inputs = (jax.random.uniform(key, shape=(num_samples, 1)) ** (1 / input_dim)) * (input_directions / jnp.linalg.norm(input_directions, axis=-1, keepdims=True))
     elif input_dist == "uniform":
         # Generate random inputs
-        inputs = np.random.uniform(-10, 10, size=(num_samples, input_dim))
+        rngkey, key = jax.random.split(rngkey)
+        inputs = jax.random.uniform(key, shape=(num_samples, input_dim), minval=-10, maxval=10)
     true_outputs = model.apply(true_param, inputs)
     return inputs, true_outputs
 
