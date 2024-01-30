@@ -39,7 +39,7 @@ def mala_acceptance_probability(current_point, proposed_point, loss_and_grad_fn,
     acceptance_log_prob = log_q_proposed_to_current - log_q_current_to_proposed + current_loss - proposed_loss
     return jnp.minimum(1.0, jnp.exp(acceptance_log_prob))
 
-def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False):
+def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False, verbose=False):
     num_training_data = len(x_train)
     if itemp is None:
         itemp = 1 / jnp.log(num_training_data)
@@ -85,7 +85,7 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
                     sgld_config.epsilon
                 )
                 accept_probs.append((t, prob))
-            if t % 200 == 0:
+            if t % 200 == 0 and verbose:
                 print(f"Step {t}, loss: {loss_trace[-1]}")
             t += 1
     return loss_trace, distances, accept_probs
