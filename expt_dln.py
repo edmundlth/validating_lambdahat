@@ -264,7 +264,8 @@ def run_experiment(
     # Hessian trace
     if do_hessian_trace:
         print("Calculating estimated hessian trace.")
-        x_small, y_small = generate_training_data(true_param, model, input_dim, num_test_data)
+        rngkey, subkey = jax.random.split(rngkey)
+        x_small, y_small = generate_training_data(rngkey, true_param, model, input_dim, num_test_data, input_dist=input_dist)
         rngkey, subkey = jax.random.split(rngkey)
         est_hess_trace = float(get_dln_hessian_trace_estimate(rngkey, true_param, loss_fn, x_small, y_small))
         _run.info["hessian_trace_estimate"] = est_hess_trace
@@ -275,7 +276,8 @@ def run_experiment(
     if do_functional_rank:
         print("Calculating functional rank...")
         threshold = 0.001
-        x_small, y_small = generate_training_data(true_param, model, input_dim, num_test_data)
+        rngkey, subkey = jax.random.split(rngkey)
+        x_small, y_small = generate_training_data(rngkey, true_param, model, input_dim, num_test_data, input_dist=input_dist)
         true_param_packed, pack_info = pack_params(true_param)
         fwd_fn = jax.jit(lambda p_packed: jnp.ravel(model.apply(unpack_params(p_packed, pack_info), x_small)))
         jacobian_matrix = np.asarray(jax.jacfwd(fwd_fn)(true_param_packed))
