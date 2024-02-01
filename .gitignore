@@ -3,3 +3,6 @@ __pycache__/
 .vscode/
 outputs/
 archive/
+generated_commands_dir/
+images/
+spartan_outputs/
