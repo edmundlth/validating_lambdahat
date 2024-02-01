@@ -11,7 +11,8 @@ from dln import (
     mse_loss, 
     generate_training_data,
     get_dln_hessian_trace_estimate, 
-    make_population_loss_fn
+    make_population_loss_fn, 
+    batched_mse_loss_fn
 )
 from utils import (
     to_json_friendly_tree, 
@@ -167,6 +168,8 @@ def run_experiment(
         true_param_config
     )
     loss_fn = jax.jit(lambda param, inputs, targets: mse_loss(param, model, inputs, targets))
+    batched_loss_fn = jax.jit(lambda param, x, y: batched_mse_loss_fn(param, model, x, y, 1024))
+
     
     ####################
     # SGLD lambdahat
@@ -175,7 +178,7 @@ def run_experiment(
     loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, true_param, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance, verbose=verbose)
 
     # compute lambdahat from loss trace
-    init_loss = loss_fn(true_param, x_train, y_train)
+    init_loss = batched_loss_fn(true_param, x_train, y_train)
     lambdahat = (np.mean(loss_trace) - init_loss) * num_training_data * itemp
     
     # record
@@ -219,7 +222,7 @@ def run_experiment(
         loss_trace, distances, acceptance_probs = run_sgld(subkey, loss_fn, sgld_config, trained_param, x_train, y_train, itemp=itemp, trace_batch_loss=loss_trace_minibatch, compute_distance=do_compute_distance, verbose=verbose)
 
         # compute lambdahat from loss trace
-        init_loss = loss_fn(trained_param, x_train, y_train)
+        init_loss = batched_loss_fn(trained_param, x_train, y_train)
         lambdahat = (np.mean(loss_trace) - init_loss) * num_training_data * itemp
         
         # record
@@ -256,7 +259,6 @@ def run_experiment(
             "true_rank": true_rank, 
             "true_matrix_shape": list(true_matrix.shape), 
             "true_param_singular_values": jtree.tree_map(get_singular_values, true_param),
-            "truth_check": np.allclose(model.apply(true_param, x_train), x_train @ true_matrix, atol=1e-4),
             "model_dim": model_dim,
         }
     ))

@@ -88,6 +88,19 @@ def mse_loss(param, model, inputs, targets):
     predictions = model.apply(param, inputs)
     return jnp.mean((predictions - targets) ** 2)
 
+def batched_mse_loss_fn(params, model, inputs, targets, batch_size):
+    num_samples = inputs.shape[0]
+    num_batches = (num_samples + batch_size - 1) // batch_size
+    total_loss = 0.0
+
+    for i in range(num_batches):
+        start = i * batch_size
+        end = start + batch_size
+        inputs_batch = inputs[start:end]
+        targets_batch = targets[start:end]
+        batch_loss = mse_loss(params, model, inputs_batch, targets_batch)
+        total_loss += batch_loss * inputs_batch.shape[0]
+    return total_loss / num_samples
 
 def create_minibatches(inputs, targets, batch_size, shuffle=True):
     assert len(inputs) == len(targets)
