@@ -52,7 +52,23 @@ def create_dln_model(layer_widths, sigma=None):
     return model
 
 
-def generate_training_data(rngkey, true_param, model, input_dim, num_samples, input_dist="uniform"):
+def batched_forward_apply(model, params, inputs, batch_size=1024):
+    """Applies the model on inputs in batches."""
+    num_samples = inputs.shape[0]
+    num_batches = (num_samples + batch_size - 1) // batch_size
+    outputs = []
+
+    for i in range(num_batches):
+        start = i * batch_size
+        end = start + batch_size
+        inputs_batch = inputs[start:end, :]
+        outputs_batch = model.apply(params, inputs_batch)
+        outputs.append(outputs_batch)
+    
+    return jnp.concatenate(outputs, axis=0)
+
+
+def generate_training_data(rngkey, true_param, model, input_dim, num_samples, input_dist="uniform", batch_size=1024):
     if input_dist == "unit_ball":
         # Generate random inputs uniformly from the input ball
         rngkey, key = jax.random.split(rngkey)
@@ -63,7 +79,9 @@ def generate_training_data(rngkey, true_param, model, input_dim, num_samples, in
         # Generate random inputs
         rngkey, key = jax.random.split(rngkey)
         inputs = jax.random.uniform(key, shape=(num_samples, input_dim), minval=-10, maxval=10)
-    true_outputs = model.apply(true_param, inputs)
+    
+    # true_outputs = model.apply(true_param, inputs)
+    true_outputs = batched_forward_apply(model, true_param, inputs, batch_size)
     return inputs, true_outputs
 
 def mse_loss(param, model, inputs, targets):

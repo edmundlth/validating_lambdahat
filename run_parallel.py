@@ -24,7 +24,7 @@ DB_NAME = "dln_lambdahat"
 
 SGLD_EPSILON = 5e-9
 SGLD_NUMSTEPS = 200000
-SGLD_BATCH_SIZE = 500
+SGLD_BATCH_SIZE = 128
 SGLD_GAMMA = 1.0
 PROP_RANK_REDUCE = 0.5
 NUMTRAININGDATA = 1000000
@@ -69,7 +69,7 @@ for seed_i in range(NUM_SEEDS):
         f"do_training={DO_TRAINING}",
         f"training_config.optim='adam'",
         f"training_config.learning_rate=0.01",
-        f"training_config.batch_size=500",
+        f"training_config.batch_size={SGLD_BATCH_SIZE}",
         f"training_config.num_steps=50000",
         f"do_functional_rank={DO_FUNCTIONAL_RANK}",
         f"do_hessian_trace={DO_HESSIAN_TRACE}",
