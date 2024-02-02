@@ -14,6 +14,8 @@ def to_float_or_list(x):
         return [float(el) for el in x]
     elif hasattr(x, "tolist"):  # For JAX or numpy arrays
         return x.tolist()
+    elif isinstance(x, str):
+        return x
     else:
         raise ValueError(f"Unsupported type {type(x)}")
 
