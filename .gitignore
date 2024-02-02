@@ -1,4 +1,8 @@
 __pycache__/
+*.DS_Store
 .vscode/
 outputs/
 archive/
+generated_commands_dir/
+images/
+spartan_outputs/
