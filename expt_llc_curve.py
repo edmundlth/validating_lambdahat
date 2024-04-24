@@ -202,7 +202,7 @@ def run_experiment(
             if t % logging_period == 0: 
                 gc.collect()
                 if force_realisable:
-                    y = model.apply(trained_param, model_state, rngkey, x_train, False)[0]
+                    y = jnp.argmax(model.apply(trained_param, model_state, rngkey, x_train, False)[0], axis=-1)
                 else:
                     y = y_train
                 
