@@ -15,6 +15,7 @@ from sgld_utils import (
 )
 from utils import to_json_friendly_tree, running_mean
 from typing import NamedTuple
+import gc
 
 from sacred import Experiment
 # Create a new experiment
@@ -152,8 +153,10 @@ def run_experiment(
         )
     elif training_config.optim.lower() == "adam":
         optimizer = optax.adam(
-            learning_rate=training_config.learning_rate
+            learning_rate=training_config.learning_rate,
         )
+    else:
+        raise ValueError("Unknown optimizer")
     opt_state = optimizer.init(trained_param)
 
     
@@ -179,6 +182,11 @@ def run_experiment(
     
     _run.info = []
     t = 0
+    loss_fn_outer_jitted = jax.jit(
+        lambda parameter, state, rngkey, x, y: compute_loss(
+            parameter, state, rngkey, x, y, False
+        )[0]
+    )
     while t < max_steps:
         for x_batch, y_batch in train_dataset_iter:
             rngkey, subkey = jax.random.split(rngkey)
@@ -192,21 +200,17 @@ def run_experiment(
             )
             
             if t % logging_period == 0: 
+                gc.collect()
                 if force_realisable:
                     y = model.apply(trained_param, x_train)
                 else:
                     y = y_train
                 
                 rngkey, subkey = jax.random.split(rngkey)
-                loss_fn = jax.jit(
-                    lambda parameter, x, y: compute_loss(
-                        parameter, model_state, rngkey, x, y, False
-                    )[0]
-                )
-                
+                loss_fn = lambda parameter, x, y: loss_fn_outer_jitted(parameter, model_state, rngkey, x, y)                
                 loss_trace, distances, acceptance_probs = run_sgld(
                     subkey, 
-                    loss_fn, 
+                    loss_fn,
                     sgld_config, 
                     trained_param, 
                     x_train, 
@@ -240,7 +244,6 @@ def run_experiment(
                     print(rec["t"], rec["train_loss"], rec["lambdahat"])
 
                 _run.info.append(to_json_friendly_tree(rec))
-            
             t += 1
             if t >= max_steps:
                 break
