@@ -175,6 +175,8 @@ def run_experiment(
         ax.set_yscale("log")
         ax.set_ylabel("Training Loss")
         ax.set_xlabel("Num SGD Steps")
+
+        ax = ax.twinx()
         title = (
             f"$M={num_hidden_layers}$, "
             f"$H={width}$, "
@@ -187,7 +189,9 @@ def run_experiment(
         ax.plot(df["t"], yvals, "g-")
         ax.set_ylabel("Estimated LLC, $\hat{\lambda}(w^*)$")
         ax.set_title(title, fontsize="large")
-        fig.savefig(f"dln_saddle_to_saddle_plot_{expt_name}_{seed}.pdf", bbox_inches="tight")
+        filepath = f"dln_saddle_to_saddle_plot_{expt_name}_{seed}.pdf"
+        fig.savefig(filepath, bbox_inches="tight")
+        print(f"Image saved at: {filepath}")
     return 
             
 
