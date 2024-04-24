@@ -53,12 +53,11 @@ def load_cifar10():
 
 
 # Initialize the model and optimizer
-def initialize_model(rng, learning_rate=0.001):
+def initialize_model(rng):
     model = make_resnet18()
     dummy_input = jnp.ones([1, 32, 32, 3], jnp.float32)
     params, state = model.init(rng, dummy_input, True)
-    optimizer = optax.adam(learning_rate)
-    return model, params, state, optimizer
+    return model, params, state
 
 
 def batch_generator(x, y, batch_size, rngkey):
@@ -133,9 +132,8 @@ def run_experiment(
     x_train, y_train, x_test, y_test = load_cifar10()
     
     rngkey, subkey = jax.random.split(rngkey)
-    model, trained_param, model_state, optimizer = initialize_model(rngkey)
-    rngkey, subkey = jax.random.split(rngkey)
-    opt_state = optimizer.init(trained_param)
+    model, trained_param, model_state = initialize_model(rngkey)
+    
         
     rngkey, subkey = jax.random.split(rngkey)
     train_dataset_iter = batch_generator(
@@ -154,9 +152,9 @@ def run_experiment(
         )
     elif training_config.optim.lower() == "adam":
         optimizer = optax.adam(
-            learning_rate=training_config.learning_rate, 
-            momentum=training_config.momentum
+            learning_rate=training_config.learning_rate
         )
+    opt_state = optimizer.init(trained_param)
 
     
     def compute_loss(params, state, rngkey, x, y, is_training):
