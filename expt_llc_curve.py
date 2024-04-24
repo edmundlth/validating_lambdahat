@@ -203,6 +203,7 @@ def run_experiment(
                 gc.collect()
                 if force_realisable:
                     y = model.apply(trained_param, model_state, rngkey, x_train, False)
+                    print(x_train.shape, y.shape, y_train.shape)
                 else:
                     y = y_train
                 
@@ -218,6 +219,7 @@ def run_experiment(
                     itemp=itemp, 
                     trace_batch_loss=loss_trace_minibatch, 
                     compute_distance=False, 
+                    compute_mala_acceptance=False,
                     verbose=verbose
                 )
                 

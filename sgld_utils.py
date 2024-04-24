@@ -39,7 +39,7 @@ def mala_acceptance_probability(current_point, proposed_point, loss_and_grad_fn,
     acceptance_log_prob = log_q_proposed_to_current - log_q_current_to_proposed + current_loss - proposed_loss
     return jnp.minimum(1.0, jnp.exp(acceptance_log_prob))
 
-def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False, verbose=False):
+def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False, compute_mala_acceptance=True, verbose=False):
     num_training_data = len(x_train)
     if itemp is None:
         itemp = 1 / jnp.log(num_training_data)
@@ -67,11 +67,18 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
             param = optax.apply_updates(param, updates)
             if compute_distance: 
                 distances.append(param_lp_dist(param_init, param, ord=2))
+            
             if trace_batch_loss:
-                loss_trace.append(loss_fn(param, x_batch, y_batch))
+                loss_val = loss_fn(param, x_batch, y_batch)
             else:
-                loss_trace.append(loss_fn(param, x_train, y_train))
-            if t % 20 == 0:
+                loss_val = loss_fn(param, x_train, y_train)
+            if jnp.isnan(loss_val) or jnp.isinf(loss_val) :
+                print(f"Step {t}, loss is NaN. Exiting.")
+                return loss_trace, distances, accept_probs
+            else:
+                loss_trace.append(loss_val)
+            
+            if compute_mala_acceptance and t % 20 == 0: # Compute acceptance probability every 20 steps
                 old_param_packed, pack_info = pack_params(old_param)
                 param_packed, _ = pack_params(param)
                 def grad_fn_packed(w):
