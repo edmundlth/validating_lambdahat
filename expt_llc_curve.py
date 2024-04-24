@@ -202,8 +202,7 @@ def run_experiment(
             if t % logging_period == 0: 
                 gc.collect()
                 if force_realisable:
-                    y = model.apply(trained_param, model_state, rngkey, x_train, False)
-                    print(x_train.shape, y.shape, y_train.shape)
+                    y = model.apply(trained_param, model_state, rngkey, x_train, False)[0]
                 else:
                     y = y_train
                 
