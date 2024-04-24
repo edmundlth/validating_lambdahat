@@ -5,6 +5,7 @@ import jax.tree_util as jtree
 import numpy as np
 import optax
 import pandas as pd 
+import matplotlib.pyplot as plt
 
 from dln import (
     create_dln_model, 
@@ -16,7 +17,7 @@ from sgld_utils import (
     SGLDConfig, 
     run_sgld
 )
-from utils import to_json_friendly_tree
+from utils import to_json_friendly_tree, running_mean
 import os
 from sacred import Experiment
 # Create a new experiment
@@ -26,6 +27,7 @@ ex = Experiment('dln_saddle_dynamics')
 @ex.config
 def cfg():
     expt_name = None
+    in_out_dim = 5 # input output dimension, control teacher matrix shape
     sgld_config = {
         'epsilon': 1e-6,
         'gamma': 1.0,
@@ -47,13 +49,16 @@ def cfg():
         "num_steps": 20000
     }
     seed = 42
-    logging_period=50
-    verbose=False
+    logging_period = 50
+    verbose = False
+    do_plot = False
 
 
 @ex.automain
 def run_experiment(
     _run, 
+    expt_name,
+    in_out_dim,
     sgld_config, 
     loss_trace_minibatch,
     width,
@@ -65,6 +70,7 @@ def run_experiment(
     seed,
     logging_period,
     verbose,
+    do_plot,
 ):
     # seeding
     np.random.seed(seed)
@@ -75,7 +81,7 @@ def run_experiment(
     ####################
     # Teacher matrix
     initialisation_sigma = np.sqrt(width ** (-initialisation_exponent))
-    teacher_matrix = 10.0 * np.diag([1, 2, 3, 4, 5])
+    teacher_matrix = 10.0 * np.diag(np.arange(in_out_dim) + 1)
     input_dim = teacher_matrix.shape[0]
     output_dim = teacher_matrix.shape[1]
     layer_widths = [width] * num_hidden_layers + [output_dim]
@@ -126,7 +132,7 @@ def run_experiment(
                     x_train, 
                     y,
                     itemp=itemp, 
-                    trace_batch_loss=True, 
+                    trace_batch_loss=loss_trace_minibatch, 
                     compute_distance=False, 
                     verbose=False
                 )
@@ -162,6 +168,26 @@ def run_experiment(
             t += 1
             if t >= max_steps:
                 break
+    if do_plot:
+        df = pd.DataFrame(_run.info)
+        fig, ax = plt.subplots()
+        ax.plot(df["t"], df["train_loss"])
+        ax.set_yscale("log")
+        ax.set_ylabel("Training Loss")
+        ax.set_xlabel("Num SGD Steps")
+        title = (
+            f"$M={num_hidden_layers}$, "
+            f"$H={width}$, "
+            f"$T={training_config['num_steps']}$, " 
+            f"$k={logging_period}$, "
+            f"RNG seed$={seed}$"
+        )
+        ax.plot(df["t"], np.clip(df["lambdahat"], a_min=0, a_max=np.inf), "kx", alpha=0.3)
+        yvals = running_mean(df["lambdahat"])
+        ax.plot(df["t"], yvals, "g-")
+        ax.set_ylabel("Estimated LLC, $\hat{\lambda}(w^*)$")
+        ax.set_title(title, fontsize="large")
+        fig.savefig(f"dln_saddle_to_saddle_plot_{expt_name}_{seed}.pdf", bbox_inches="tight")
     return 
             
 

@@ -7,6 +7,22 @@ from scipy.stats import linregress
 
 
 
+def running_mean(data, window_size=10):
+    if window_size % 2 == 0:
+        left_pad = window_size // 2
+        right_pad = window_size // 2 - 1
+    else:
+        left_pad = right_pad = window_size // 2
+
+    # Reflect the data for boundary cases
+    pad_left = data[:left_pad][::-1]
+    pad_right = data[-right_pad:][::-1]
+    padded_data = np.concatenate([pad_left, data, pad_right])
+
+    kernel = np.ones(window_size) / window_size
+    return np.convolve(padded_data, kernel, mode='valid')
+
+
 def to_float_or_list(x):
     if isinstance(x, (float, int)):
         return float(x)
