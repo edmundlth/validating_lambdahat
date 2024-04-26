@@ -72,7 +72,8 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
                 loss_val = loss_fn(param, x_batch, y_batch)
             else:
                 loss_val = loss_fn(param, x_train, y_train)
-            if jnp.isnan(loss_val) or jnp.isinf(loss_val) :
+            if jnp.isnan(loss_val) or jnp.isinf(loss_val):
+                loss_trace.append(loss_val)
                 print(f"Step {t}, loss is NaN. Exiting.")
                 return loss_trace, distances, accept_probs
             else:
@@ -95,6 +96,8 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
             if t % 200 == 0 and verbose:
                 print(f"Step {t}, loss: {loss_trace[-1]}")
             t += 1
+            if t >= sgld_config.num_steps:
+                break
     return loss_trace, distances, accept_probs
 
 

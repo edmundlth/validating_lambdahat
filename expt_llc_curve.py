@@ -28,6 +28,7 @@ class TrainingConfig(NamedTuple):
     batch_size: int
     num_steps: int
     momentum: float = None
+    l2_regularization: float = None
 
 # Haiku module for ResNet18 with is_training flag
 def net_fn(x, is_training=True):
@@ -97,7 +98,8 @@ def cfg():
         "learning_rate": 1e-3, 
         "momentum": None, 
         "batch_size": 128, 
-        "num_steps": 20000
+        "num_steps": 20000, 
+        "l2_regularization": None, 
     }
     force_realisable = False # if True use LLC realisable i.e. y = model(param_init, x) 
     seed = 42
@@ -160,15 +162,27 @@ def run_experiment(
     opt_state = optimizer.init(trained_param)
 
     
-    def compute_loss(params, state, rngkey, x, y, is_training):
+    def compute_loss(params, state, rngkey, x, y, is_training, l2_regularization=0.0):
         labels_one_hot = jax.nn.one_hot(y, 10)
         logits, new_state = model.apply(params, state, rngkey, x, is_training)
-        return jnp.mean(optax.softmax_cross_entropy(logits=logits, labels=labels_one_hot)), new_state
+        loss_val = jnp.mean(optax.softmax_cross_entropy(logits=logits, labels=labels_one_hot))
+        if l2_regularization is not None and l2_regularization > 0.0:
+            l2_loss = l2_regularization * jnp.sum(jnp.sum(jnp.square(p)) for p in jtree.tree_leaves(params)[0])
+            loss_val += l2_loss
+        return loss_val, new_state
 
-
+    training_loss_fn = lambda parameter, state, rngkey, x, y: compute_loss(
+        parameter, 
+        state, 
+        rngkey, 
+        x, 
+        y, 
+        is_training=True, 
+        l2_regularization=training_config.l2_regularization
+    )
     @jax.jit
     def update_step(params, state, rngkey, x, y, opt_state):
-        (loss_val, new_state), grad = jax.value_and_grad(compute_loss, has_aux=True)(params, state, rngkey, x, y, True)
+        (loss_val, new_state), grad = jax.value_and_grad(training_loss_fn, has_aux=True)(params, state, rngkey, x, y)
         updates, new_opt_state = optimizer.update(grad, opt_state)
         new_params = optax.apply_updates(params, updates)
         return loss_val, new_params, new_state, new_opt_state
@@ -182,9 +196,9 @@ def run_experiment(
     
     _run.info = []
     t = 0
-    loss_fn_outer_jitted = jax.jit(
+    sgld_loss_fn_outer_jitted = jax.jit(
         lambda parameter, state, rngkey, x, y: compute_loss(
-            parameter, state, rngkey, x, y, False
+            parameter, state, rngkey, x, y, is_training=False, l2_regularization=None # Explicitly no regularization
         )[0]
     )
     while t < max_steps:
@@ -207,7 +221,7 @@ def run_experiment(
                     y = y_train
                 
                 rngkey, subkey = jax.random.split(rngkey)
-                loss_fn = lambda parameter, x, y: loss_fn_outer_jitted(parameter, model_state, rngkey, x, y)                
+                loss_fn = lambda parameter, x, y: sgld_loss_fn_outer_jitted(parameter, model_state, rngkey, x, y)                
                 loss_trace, distances, acceptance_probs = run_sgld(
                     subkey, 
                     loss_fn,
@@ -224,8 +238,8 @@ def run_experiment(
                 
                 init_loss = loss_fn(trained_param, x_train, y)
                 lambdahat = float(np.mean(loss_trace) - init_loss) * num_training_data * itemp
-
-                test_loss = loss_fn(trained_param, x_test, y_test)
+                # Note that test loss is on all test data while train loss is on mini-batch data from training set.
+                test_loss = loss_fn(trained_param, x_test, y_test)  
 
                 rngkey, subkey = jax.random.split(rngkey)
                 test_accuracy = evaluate_accuracy(model, trained_param, model_state, x_test, y_test, rngkey)
