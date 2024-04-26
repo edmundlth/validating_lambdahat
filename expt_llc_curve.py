@@ -225,6 +225,8 @@ def run_experiment(
                 init_loss = loss_fn(trained_param, x_train, y)
                 lambdahat = float(np.mean(loss_trace) - init_loss) * num_training_data * itemp
 
+                test_loss = loss_fn(trained_param, x_test, y_test)
+
                 rngkey, subkey = jax.random.split(rngkey)
                 test_accuracy = evaluate_accuracy(model, trained_param, model_state, x_test, y_test, rngkey)
                 rngkey, subkey = jax.random.split(rngkey)
@@ -232,6 +234,7 @@ def run_experiment(
 
                 rec = {
                     "t": t + 1, 
+                    "test_loss": float(test_loss), 
                     "train_loss": float(train_loss),
                     "lambdahat": float(lambdahat),
                     "loss_trace": loss_trace, 
