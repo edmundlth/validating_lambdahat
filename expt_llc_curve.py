@@ -167,7 +167,7 @@ def run_experiment(
         logits, new_state = model.apply(params, state, rngkey, x, is_training)
         loss_val = jnp.mean(optax.softmax_cross_entropy(logits=logits, labels=labels_one_hot))
         if l2_regularization is not None and l2_regularization > 0.0:
-            l2_loss = l2_regularization * jnp.sum(jnp.sum(jnp.square(p)) for p in jtree.tree_leaves(params)[0])
+            l2_loss = l2_regularization * sum(jnp.sum(jnp.square(p)) for p in jtree.tree_leaves(params)[0])
             loss_val += l2_loss
         return loss_val, new_state
 
