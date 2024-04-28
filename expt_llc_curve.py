@@ -78,6 +78,11 @@ def evaluate_accuracy(model, params, state, x, y, rngkey):
     return jnp.mean(predictions == y)
 
 
+def logit_logit_cross_entropy(logits1, logits2):
+    probs1 = jax.nn.softmax(logits1, axis=-1)
+    return -jnp.sum(probs1 * jax.nn.log_softmax(logits2, axis=-1), axis=-1)
+
+
 @ex.config
 def cfg():
     expt_name = None
@@ -186,6 +191,19 @@ def run_experiment(
         updates, new_opt_state = optimizer.update(grad, opt_state)
         new_params = optax.apply_updates(params, updates)
         return loss_val, new_params, new_state, new_opt_state
+    
+    if force_realisable:
+        y = model.apply(trained_param, model_state, rngkey, x_train, False)[0] # these are current model logits and not the true labels
+        @jax.jit
+        def sgld_outer_loss_fn(parameter, model_state, rngkey, x, y):
+            model_output_logit = model.apply(parameter, model_state, rngkey, x, False)[0]
+            return jnp.mean(logit_logit_cross_entropy(model_output_logit, y))
+    else:
+        y = y_train
+        @jax.jit
+        def sgld_outer_loss_fn(parameter, model_state, rngkey, x, y):
+            return compute_loss(parameter, model_state, rngkey, x, y, is_training=False, l2_regularization=None)[0]
+                
 
     
     ##############################################
@@ -196,11 +214,7 @@ def run_experiment(
     
     _run.info = []
     t = 0
-    sgld_loss_fn_outer_jitted = jax.jit(
-        lambda parameter, state, rngkey, x, y: compute_loss(
-            parameter, state, rngkey, x, y, is_training=False, l2_regularization=None # Explicitly no regularization
-        )[0]
-    )
+    
     while t < max_steps:
         for x_batch, y_batch in train_dataset_iter:
             rngkey, subkey = jax.random.split(rngkey)
@@ -215,13 +229,9 @@ def run_experiment(
             
             if t % logging_period == 0: 
                 gc.collect()
-                if force_realisable:
-                    y = jnp.argmax(model.apply(trained_param, model_state, rngkey, x_train, False)[0], axis=-1)
-                else:
-                    y = y_train
-                
+
                 rngkey, subkey = jax.random.split(rngkey)
-                loss_fn = lambda parameter, x, y: sgld_loss_fn_outer_jitted(parameter, model_state, rngkey, x, y)                
+                loss_fn = lambda parameter, x, y: sgld_outer_loss_fn(parameter, model_state, rngkey, x, y)
                 loss_trace, distances, acceptance_probs = run_sgld(
                     subkey, 
                     loss_fn,
@@ -239,7 +249,24 @@ def run_experiment(
                 init_loss = loss_fn(trained_param, x_train, y)
                 lambdahat = float(np.mean(loss_trace) - init_loss) * num_training_data * itemp
                 # Note that test loss is on all test data while train loss is on mini-batch data from training set.
-                test_loss = loss_fn(trained_param, x_test, y_test)  
+                test_loss = compute_loss(
+                    trained_param, 
+                    model_state, 
+                    rngkey, 
+                    x_test, 
+                    y_test, 
+                    is_training=False, 
+                    l2_regularization=training_config.l2_regularization
+                )[0]
+                test_loss_no_reg = compute_loss(
+                    trained_param, 
+                    model_state, 
+                    rngkey, 
+                    x_test, 
+                    y_test, 
+                    is_training=False, 
+                    l2_regularization=None
+                )[0]
 
                 rngkey, subkey = jax.random.split(rngkey)
                 test_accuracy = evaluate_accuracy(model, trained_param, model_state, x_test, y_test, rngkey)
@@ -249,6 +276,7 @@ def run_experiment(
                 rec = {
                     "t": t + 1, 
                     "test_loss": float(test_loss), 
+                    "test_loss_no_reg": float(test_loss_no_reg),
                     "train_loss": float(train_loss),
                     "lambdahat": float(lambdahat),
                     "loss_trace": loss_trace, 
