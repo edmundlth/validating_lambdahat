@@ -5,7 +5,7 @@ import jax.tree_util as jtree
 import optax 
 from typing import NamedTuple
 from dln import create_minibatches
-from utils import param_lp_dist, pack_params, unpack_params
+from utils import param_lp_dist, pack_params, unpack_params, param_l2_dist
 
 class SGLDConfig(NamedTuple):
   epsilon: float
@@ -39,7 +39,7 @@ def mala_acceptance_probability(current_point, proposed_point, loss_and_grad_fn,
     acceptance_log_prob = log_q_proposed_to_current - log_q_current_to_proposed + current_loss - proposed_loss
     return jnp.minimum(1.0, jnp.exp(acceptance_log_prob))
 
-def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False, compute_mala_acceptance=True, verbose=False):
+def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=None, trace_batch_loss=True, compute_distance=False, compute_mala_acceptance=True, verbose=False, logging_period=200):
     num_training_data = len(x_train)
     if itemp is None:
         itemp = 1 / jnp.log(num_training_data)
@@ -53,6 +53,10 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
     sgld_grad_fn = jax.jit(jax.value_and_grad(lambda w, x, y: -local_logprob(w, x, y), argnums=0))
     
     sgldoptim = optim_sgld(sgld_config.epsilon, rngkey)
+    minibatch_iter = create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size)
+    if compute_mala_acceptance: # For memory efficiency, no need to store if not computing
+        old_param = param.copy()
+
     loss_trace = []
     distances = []
     accept_probs = []
@@ -60,24 +64,16 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
     param = param_init
     t = 0
     while t < sgld_config.num_steps:
-        for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size):
-            old_param = param.copy()
-            _, grads = sgld_grad_fn(param, x_batch, y_batch)
-            updates, opt_state = sgldoptim.update(grads, opt_state)
-            param = optax.apply_updates(param, updates)
+        for x_batch, y_batch in minibatch_iter:
+
             if compute_distance: 
-                distances.append(param_lp_dist(param_init, param, ord=2))
+                distances.append(param_l2_dist(param_init, param))
             
             if trace_batch_loss:
                 loss_val = loss_fn(param, x_batch, y_batch)
             else:
                 loss_val = loss_fn(param, x_train, y_train)
-            if jnp.isnan(loss_val) or jnp.isinf(loss_val):
-                loss_trace.append(loss_val)
-                print(f"Step {t}, loss is NaN. Exiting.")
-                return loss_trace, distances, accept_probs
-            else:
-                loss_trace.append(loss_val)
+            loss_trace.append(loss_val)
             
             if compute_mala_acceptance and t % 20 == 0: # Compute acceptance probability every 20 steps
                 old_param_packed, pack_info = pack_params(old_param)
@@ -93,8 +89,20 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
                     sgld_config.epsilon
                 )
                 accept_probs.append([t, prob])
-            if t % 200 == 0 and verbose:
-                print(f"Step {t}, loss: {loss_trace[-1]}")
+            
+            if t % logging_period == 0 and verbose:
+                print(f"Step {t + 1}, loss: {loss_trace[-1]}")
+            
+            if jnp.isnan(loss_val) or jnp.isinf(loss_val):
+                print(f"Step {t}, loss is NaN. Exiting.")
+                return loss_trace, distances, accept_probs
+            
+            if compute_mala_acceptance:
+                old_param = param.copy()
+
+            _, grads = sgld_grad_fn(param, x_batch, y_batch)
+            updates, opt_state = sgldoptim.update(grads, opt_state)
+            param = optax.apply_updates(param, updates)
             t += 1
             if t >= sgld_config.num_steps:
                 break

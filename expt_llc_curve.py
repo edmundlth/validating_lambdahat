@@ -193,13 +193,11 @@ def run_experiment(
         return loss_val, new_params, new_state, new_opt_state
     
     if force_realisable:
-        y = model.apply(trained_param, model_state, rngkey, x_train, False)[0] # these are current model logits and not the true labels
         @jax.jit
         def sgld_outer_loss_fn(parameter, model_state, rngkey, x, y):
             model_output_logit = model.apply(parameter, model_state, rngkey, x, False)[0]
             return jnp.mean(logit_logit_cross_entropy(model_output_logit, y))
     else:
-        y = y_train
         @jax.jit
         def sgld_outer_loss_fn(parameter, model_state, rngkey, x, y):
             return compute_loss(parameter, model_state, rngkey, x, y, is_training=False, l2_regularization=None)[0]
@@ -229,6 +227,11 @@ def run_experiment(
             
             if t % logging_period == 0: 
                 gc.collect()
+                if force_realisable:
+                    # these are current model logits and not the true labels
+                    y = model.apply(trained_param, model_state, rngkey, x_train, False)[0] 
+                else:
+                    y = y_train
 
                 rngkey, subkey = jax.random.split(rngkey)
                 loss_fn = lambda parameter, x, y: sgld_outer_loss_fn(parameter, model_state, rngkey, x, y)
@@ -245,7 +248,7 @@ def run_experiment(
                     compute_mala_acceptance=False,
                     verbose=verbose
                 )
-                
+
                 init_loss = loss_fn(trained_param, x_train, y)
                 lambdahat = float(np.mean(loss_trace) - init_loss) * num_training_data * itemp
                 # Note that test loss is on all test data while train loss is on mini-batch data from training set.
