@@ -53,7 +53,6 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
     sgld_grad_fn = jax.jit(jax.value_and_grad(lambda w, x, y: -local_logprob(w, x, y), argnums=0))
     
     sgldoptim = optim_sgld(sgld_config.epsilon, rngkey)
-    minibatch_iter = create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size)
     if compute_mala_acceptance: # For memory efficiency, no need to store if not computing
         old_param = param.copy()
 
@@ -64,7 +63,7 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
     param = param_init
     t = 0
     while t < sgld_config.num_steps:
-        for x_batch, y_batch in minibatch_iter:
+        for x_batch, y_batch in create_minibatches(x_train, y_train, batch_size=sgld_config.batch_size):
 
             if compute_distance: 
                 distances.append(param_l2_dist(param_init, param))
@@ -91,7 +90,7 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
                 accept_probs.append([t, prob])
             
             if t % logging_period == 0 and verbose:
-                print(f"Step {t + 1}, loss: {loss_trace[-1]}")
+                print(f"Step {t}, loss: {loss_trace[-1]}")
             
             if jnp.isnan(loss_val) or jnp.isinf(loss_val):
                 print(f"Step {t}, loss is NaN. Exiting.")
