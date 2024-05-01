@@ -106,7 +106,7 @@ def cfg():
         "num_steps": 20000, 
         "l2_regularization": None, 
     }
-    force_realisable = False # if True use LLC realisable i.e. y = model(param_init, x) 
+    force_realisable = False # if True use LLC realisable i.e. y = model(param_init, x) TODO: rephrase this after reimplementation
     seed = 42
     logging_period = 200
     verbose = False
@@ -196,7 +196,7 @@ def run_experiment(
         @jax.jit
         def sgld_outer_loss_fn(parameter, model_state, rngkey, x, y):
             model_output_logit = model.apply(parameter, model_state, rngkey, x, False)[0]
-            return jnp.mean(logit_logit_cross_entropy(model_output_logit, y))
+            return jnp.mean(logit_logit_cross_entropy(y, model_output_logit))
     else:
         @jax.jit
         def sgld_outer_loss_fn(parameter, model_state, rngkey, x, y):
@@ -290,7 +290,14 @@ def run_experiment(
                     "train_accuracy": float(train_accuracy),
                 }
                 if verbose:
-                    print(rec["t"], rec["train_loss"], rec["lambdahat"])
+                    print(
+                        f"Step {t + 1}, "
+                        f"Train Loss: {rec['train_loss']:.4f}, "
+                        f"Test Loss: {rec['test_loss']:.4f}, "
+                        f"Test Accuracy: {rec['test_accuracy']:.4f}, "
+                        f"Train Accuracy: {rec['train_accuracy']:.4f}, "
+                        f"LLC: {rec['lambdahat']:.4f}"
+                    )
 
                 _run.info.append(to_json_friendly_tree(rec))
             t += 1
