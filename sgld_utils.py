@@ -90,7 +90,7 @@ def run_sgld(rngkey, loss_fn, sgld_config, param_init, x_train, y_train, itemp=N
                 accept_probs.append([t, prob])
             
             if t % logging_period == 0 and verbose:
-                print(f"Step {t}, loss: {loss_trace[-1]}")
+                print(f"Step {t}, loss: {loss_val}")
             
             if jnp.isnan(loss_val) or jnp.isinf(loss_val):
                 print(f"Step {t}, loss is NaN. Exiting.")

@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtree
 import haiku as hk
 import tensorflow_datasets as tfds
+import tensorflow as tf
 
 import numpy as np
 import optax
@@ -42,9 +43,9 @@ def make_resnet18():
 
 # Load and preprocess CIFAR-10 dataset
 def load_cifar10():
-    ds_builder = tfds.builder('cifar10')
+    ds_builder = tfds.builder('cifar10',)
     ds_builder.download_and_prepare()
-    train_ds = tfds.as_numpy(ds_builder.as_dataset(split='train', batch_size=-1))
+    train_ds = tfds.as_numpy(ds_builder.as_dataset(split='train', batch_size=-1, shuffle_files=False))
     test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
     train_images, train_labels = train_ds['image'], train_ds['label']
     test_images, test_labels = test_ds['image'], test_ds['label']
@@ -65,7 +66,9 @@ def initialize_model(rng):
 def batch_generator(x, y, batch_size, rngkey):
     num_examples = len(x)
     while True:  # This creates an infinite loop, each time reshuffling and starting over
-        perm = np.random.permutation(num_examples)
+        # perm = np.random.permutation(num_examples)
+        rngkey, _ = jax.random.split(rngkey)
+        perm = jax.random.permutation(rngkey, jnp.arange(num_examples))
         for i in range(0, num_examples, batch_size):
             batch_indices = perm[i:i + batch_size]
             yield x[batch_indices], y[batch_indices]
@@ -130,6 +133,7 @@ def run_experiment(
     # seeding
     np.random.seed(seed)
     rngkey = jax.random.PRNGKey(seed)
+    tf.random.set_seed(seed)
 
     ####################
     # Initialisations
