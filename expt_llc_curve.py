@@ -41,18 +41,47 @@ def make_resnet18():
     return hk.transform_with_state(net_fn)
 
 
+def introduce_label_noise(labels, noise_level):
+    """ Randomly alters a fraction of labels based on the specified noise level. """
+    n_samples = len(labels)
+    n_noisy = int(n_samples * noise_level)
+    noisy_indices = np.random.choice(n_samples, n_noisy, replace=False)
+    min_Label = labels.min()
+    max_label = labels.max()
+    
+    # Assign random labels
+    new_labels = np.random.randint(min_Label, max_label + 1, n_noisy)
+    noisy_labels = labels.copy()
+    noisy_labels[noisy_indices] = new_labels
+    
+    return noisy_labels
+
 # Load and preprocess CIFAR-10 dataset
-def load_cifar10():
-    ds_builder = tfds.builder('cifar10',)
+def load_cifar10(noise_level=None):
+    ds_builder = tfds.builder('cifar10')
     ds_builder.download_and_prepare()
     train_ds = tfds.as_numpy(ds_builder.as_dataset(split='train', batch_size=-1, shuffle_files=False))
     test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
+    
     train_images, train_labels = train_ds['image'], train_ds['label']
     test_images, test_labels = test_ds['image'], test_ds['label']
+    
     # Normalize images
     train_images = train_images.astype(jnp.float32) / 255.0
     test_images = test_images.astype(jnp.float32) / 255.0
-    return train_images, train_labels, test_images, test_labels
+    
+    datasets = {
+        'train_images': train_images,
+        'train_labels': train_labels,
+        'test_images': test_images,
+        'test_labels': test_labels
+    }
+    
+    if noise_level is not None and noise_level > 0.0:
+        # Introduce noise in the training labels
+        datasets['noisy_train_labels'] = introduce_label_noise(train_labels, noise_level)
+    
+    return datasets
 
 
 # Initialize the model and optimizer
@@ -99,7 +128,8 @@ def cfg():
     loss_trace_minibatch = True # if True SGLD loss_trace uses minibatch, else use full dataset. 
     model_data_config = { # TODO: currently only RESNET18 + CIFAR10 is implemented
         "model_name": "resnet18",
-        "data_name": "cifar10"
+        "data_name": "cifar10",
+        "label_noise_level": None
     }
     training_config = {
         "optim": "sgd", 
@@ -141,11 +171,19 @@ def run_experiment(
     sgld_config = SGLDConfig(**sgld_config)
     training_config = TrainingConfig(**training_config)
 
-    x_train, y_train, x_test, y_test = load_cifar10()
+    label_noise_level = model_data_config['label_noise_level']
+    dataset = load_cifar10(noise_level=label_noise_level)
+    x_train, x_test, y_test = dataset['train_images'], dataset['test_images'], dataset['test_labels']
+    using_label_noise = label_noise_level is not None and label_noise_level > 0.0
+    if using_label_noise:
+        y_train = dataset['noisy_train_labels']
+        y_train_no_noise = dataset['train_labels']
+    else:
+        y_train = dataset['train_labels']
     
     rngkey, subkey = jax.random.split(rngkey)
     model, trained_param, model_state = initialize_model(rngkey)
-    
+
         
     rngkey, subkey = jax.random.split(rngkey)
     train_dataset_iter = batch_generator(
@@ -235,7 +273,10 @@ def run_experiment(
                     # these are current model logits and not the true labels
                     y = model.apply(trained_param, model_state, rngkey, x_train, False)[0] 
                 else:
-                    y = y_train
+                    if using_label_noise:
+                        y = y_train_no_noise
+                    else:
+                        y = y_train
 
                 rngkey, subkey = jax.random.split(rngkey)
                 loss_fn = lambda parameter, x, y: sgld_outer_loss_fn(parameter, model_state, rngkey, x, y)

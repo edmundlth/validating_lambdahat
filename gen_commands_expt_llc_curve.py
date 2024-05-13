@@ -5,6 +5,8 @@ Usage: python gen_commands_expt_llc_curve.py <output_filepath>
 import datetime
 import sys
 import itertools
+import os
+import glob
 
 def unroll_config(config):
     # Prepare lists for keys and values, where values are always lists (even if singleton)
@@ -30,7 +32,7 @@ def unroll_config(config):
 current_time = datetime.datetime.now()
 datetime_str = current_time.strftime("%Y%m%d%H%M")
 
-EXPT_NAME = "dev"
+EXPT_NAME = f"varylabelnoise_{datetime_str}"
 # EXPT_NAME = f"expt_llc_curve_batch{SGLD_BATCH_SIZE}_eps{SGLD_EPSILON}_nstep{SGLD_NUMSTEPS}_{datetime_str}"
 
 # DB_NAME = "expt_llc_curve"
@@ -40,32 +42,56 @@ SACRED_OBSERVER = f"-F ./outputs/expt_llc_curve_outputs/{EXPT_NAME}/"
 
 config = {
     "expt_name": EXPT_NAME,
-    "sgld_config.epsilon": 5e-6,
+    "sgld_config.epsilon": [1e-7],
     "sgld_config.gamma": 1.0,
-    "sgld_config.num_steps": 5001,
+    "sgld_config.num_steps": 2000,
     "sgld_config.batch_size": 2048,
-    "training_config.optim": ["sgd", "adam"],
-    "training_config.learning_rate": [1e-3, 1e-4],
-    "training_config.momentum": [None, 0.9],
-    "training_config.batch_size": [128, 512],
-    "training_config.num_steps": 10001,
-    "force_realisable": False,
-    "logging_period": 500,
-    "seed": [0, 1]
+    "loss_trace_minibatch": True,
+
+    "training_config.optim": "sgd", # ["sgd", "adam"], 
+    "training_config.momentum": [None, 0.9], # [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "training_config.num_steps": 100001,
+    "training_config.learning_rate": 0.005, # [0.005, 0.01], # [0.005, 0.01, 0.05, 0.1, 0.2], # 0.2
+    "training_config.batch_size": [16, 512], # [8, 16, 32, 64, 128, 256, 512, 1024], # [64, 128, 256, 512, 1024], # 512, # [64, 512], 
+    "training_config.l2_regularization": None, # [0.0, 0.01, 0.025, 0.05, 0.075, 0.1], # None
+    "model_data_config.label_noise_level": [0, 0.05, 0.1, 0.15, 0.25],
+
+    "force_realisable": False, 
+    "logging_period": 2500,
+    "do_plot": False,
+    "verbose": False,
+    "seed": [0, 1, 2, 3, 4],
 }
 
-unrolled_config = unroll_config(config)
-COMMANDS = []
-for config_i in unrolled_config:
-    cmd = [
-        f"python expt_llc_curve.py {SACRED_OBSERVER} with",
-        *[f"{key}={value}" for key, value in config_i.items()]
-    ]
-    COMMANDS.append(" ".join(cmd))
+if __name__ == "__main__":
+    if len(sys.argv) <= 1:
+        raise RuntimeError("Please Specify output filepath.")
+    
+    filepath = sys.argv[1]
+    overwrite = sys.argv[2] if len(sys.argv) > 2 else "n"
+    if os.path.exists(filepath) and not overwrite.lower().startswith("y"):
+        # files with the same filename substring excluding extension
+        basename = os.path.basename(filepath).split(".")[0]
+        files_with_same_filenames = '\n'.join(
+            sorted(glob.glob(f"{basename}*.txt", root_dir=os.path.dirname(filepath)))
+        )
+        raise RuntimeError(
+            f"File already exists at {filepath}.\n"
+            "Please specify a different filepath or give the `y` flag.\n"
+            f"Existing files:\n{files_with_same_filenames}"
+        )
 
-print(f"Generated {len(COMMANDS)} commands.")
-if len(sys.argv) > 1:
+    unrolled_config = unroll_config(config)
+    COMMANDS = []
+    for config_i in unrolled_config:
+        if config_i["training_config.optim"] == "adam" and config_i["training_config.momentum"] is not None: # Skip Adam with momentum
+            continue
+        cmd = [
+            f"python expt_llc_curve.py --comment {filepath} {SACRED_OBSERVER} with",
+            *[f"{key}={value}" for key, value in config_i.items()]
+        ]
+        COMMANDS.append(" ".join(cmd))
     with open(sys.argv[1], "w") as outfile:
         outfile.write('\n'.join(COMMANDS))
-else:
-    raise RuntimeError("Please Specify output filepath.")
+    print(f"Generated {len(COMMANDS)} commands.")
+    
