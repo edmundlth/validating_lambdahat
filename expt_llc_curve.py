@@ -15,9 +15,8 @@ from sgld_utils import (
     run_sgld
 )
 from utils import to_json_friendly_tree, running_mean
-from typing import NamedTuple
+from typing import NamedTuple, Optional, Sequence
 import gc
-
 from sacred import Experiment
 # Create a new experiment
 ex = Experiment('llc_curve')
@@ -31,14 +30,51 @@ class TrainingConfig(NamedTuple):
     momentum: float = None
     l2_regularization: float = None
 
-# Haiku module for ResNet18 with is_training flag
-def net_fn(x, is_training=True):
-    net = hk.nets.ResNet18(num_classes=10)
-    return net(x, is_training=is_training)
+# # Haiku module for ResNet18 with is_training flag
+# def net_fn(x, is_training=True):
+#     net = hk.nets.ResNet18(num_classes=10)
+#     return net(x, is_training=is_training)
 
-# Transformed function with state
-def make_resnet18():
+# # Transformed function with state
+# def make_resnet18():
+#     return hk.transform_with_state(net_fn)
+
+class CustomResNet18(hk.nets.ResNet):
+  """ResNet18."""
+
+  def __init__(
+      self,
+      num_classes: int,
+      k: int = 64, 
+      name: Optional[str] = None,
+      strides: Sequence[int] = (1, 2, 2, 2),
+  ):
+    """
+    Construct a custom ResNet18 model with an integer parameter `k`
+    controlling the layer widths. 
+    """
+    custom_configs = {
+        "blocks_per_group": (2, 2, 2, 2),
+        "bottleneck": False,
+        "channels_per_group": (k, 2 * k, 4 * k, 8 * k),
+        "use_projection": (False, True, True, True),
+      }
+    super().__init__(num_classes=num_classes,
+                     bn_config=None,
+                     initial_conv_config={"output_channels": k, "kernel_shape": 7, "stride": 2, "padding": "SAME"},
+                     resnet_v2=False,
+                     strides=strides,
+                     logits_config=None,
+                     name=name,
+                     **custom_configs)
+
+
+def make_resnet18(num_classes=10, k=64):
+    def net_fn(x, is_training=True):
+        model = CustomResNet18(num_classes=num_classes, k=k)
+        return model(x, is_training)
     return hk.transform_with_state(net_fn)
+
 
 
 def introduce_label_noise(labels, noise_level):
@@ -85,8 +121,8 @@ def load_cifar10(noise_level=None):
 
 
 # Initialize the model and optimizer
-def initialize_model(rng):
-    model = make_resnet18()
+def initialize_model(rng, num_classes=10, k=64):
+    model = make_resnet18(num_classes=num_classes, k=k)
     dummy_input = jnp.ones([1, 32, 32, 3], jnp.float32)
     params, state = model.init(rng, dummy_input, True)
     return model, params, state
@@ -129,7 +165,8 @@ def cfg():
     model_data_config = { # TODO: currently only RESNET18 + CIFAR10 is implemented
         "model_name": "resnet18",
         "data_name": "cifar10",
-        "label_noise_level": None
+        "label_noise_level": None, 
+        "layer_width_factor": 64,
     }
     training_config = {
         "optim": "sgd", 
@@ -181,8 +218,9 @@ def run_experiment(
     else:
         y_train = dataset['train_labels']
     
+    layer_width_factor = model_data_config['layer_width_factor']
     rngkey, subkey = jax.random.split(rngkey)
-    model, trained_param, model_state = initialize_model(rngkey)
+    model, trained_param, model_state = initialize_model(rngkey, num_classes=10, k=layer_width_factor)
 
         
     rngkey, subkey = jax.random.split(rngkey)
