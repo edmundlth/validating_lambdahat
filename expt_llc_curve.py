@@ -221,8 +221,9 @@ def run_experiment(
     layer_width_factor = model_data_config['layer_width_factor']
     rngkey, subkey = jax.random.split(rngkey)
     model, trained_param, model_state = initialize_model(rngkey, num_classes=10, k=layer_width_factor)
+    param_count = sum(np.prod(p.shape) for p in jtree.tree_leaves(trained_param))
+    print(f"Total number of parameters: {param_count}")
 
-        
     rngkey, subkey = jax.random.split(rngkey)
     train_dataset_iter = batch_generator(
         x_train, 
@@ -305,7 +306,7 @@ def run_experiment(
                 opt_state
             )
             
-            if t % logging_period == 0: 
+            if t % logging_period == 0 or t == max_steps - 1: # ensure logging at last iteration
                 gc.collect()
                 if force_realisable:
                     # these are current model logits and not the true labels
