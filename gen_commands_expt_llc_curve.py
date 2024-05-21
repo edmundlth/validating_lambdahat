@@ -32,7 +32,7 @@ def unroll_config(config):
 current_time = datetime.datetime.now()
 datetime_str = current_time.strftime("%Y%m%d%H%M")
 
-EXPT_NAME = f"varymodelsize_{datetime_str}"
+EXPT_NAME = f"varybatch_{datetime_str}"
 # EXPT_NAME = f"expt_llc_curve_batch{SGLD_BATCH_SIZE}_eps{SGLD_EPSILON}_nstep{SGLD_NUMSTEPS}_{datetime_str}"
 
 # DB_NAME = "expt_llc_curve"
@@ -45,24 +45,24 @@ config = {
     "sgld_config.epsilon": [2e-7],
     "sgld_config.gamma": 1.0,
     "sgld_config.num_steps": 3000,
-    "sgld_config.batch_size": 2048,
+    "sgld_config.batch_size": [2048],
     "loss_trace_minibatch": True,
 
-    "training_config.optim": "sgd", # ["sgd", "adam"], 
-    "training_config.momentum": None, # [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "training_config.optim": ["sgd", "adam"], 
+    "training_config.momentum": [None, .9], # [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
     "training_config.num_steps": 100001,
-    "training_config.learning_rate": 0.8, # [0.005, 0.05, 0.1], # [0.005, 0.01, 0.05, 0.1, 0.2], # 0.2
-    "training_config.batch_size": 128, # [8, 16, 32, 64, 128, 256, 512, 1024], # [64, 128, 256, 512, 1024], # 512, 
+    "training_config.learning_rate": 0.2, # [0.005, 0.05, 0.1], # [0.005, 0.01, 0.05, 0.1, 0.2], # 0.2
+    "training_config.batch_size": [8, 16, 32, 64, 128, 256, 512, 1024], # [64, 128, 256, 512, 1024], # 512, 
     "training_config.l2_regularization": None, # [0.0, 0.01, 0.025, 0.05, 0.075, 0.1], # None
 
     "model_data_config.label_noise_level": None, # [0, 0.05, 0.1, 0.15, 0.25],
-    "model_data_config.layer_width_factor": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 20, 30, 64, 100, 128],
+    "model_data_config.layer_width_factor": None, # [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 20, 30, 45, 64, 85, 100, 114, 128],
 
     "force_realisable": False, 
-    "logging_period": 5000,
+    "logging_period": 2500,
     "do_plot": False,
     "verbose": False,
-    "seed": [0, 1, 2],
+    "seed": [0, 1, 2, 3, 4],
 }
 
 if __name__ == "__main__":
