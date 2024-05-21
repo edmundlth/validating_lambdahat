@@ -16,6 +16,8 @@ plotly = "*"
 pymongo = "*"
 numpyro = "*"
 kaleido = "*"
+tensorflow-datasets = "*"
+tensorflow = "*"
 
 [dev-packages]
 

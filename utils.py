@@ -7,6 +7,22 @@ from scipy.stats import linregress
 
 
 
+def running_mean(data, window_size=10):
+    if window_size % 2 == 0:
+        left_pad = window_size // 2
+        right_pad = window_size // 2 - 1
+    else:
+        left_pad = right_pad = window_size // 2
+
+    # Reflect the data for boundary cases
+    pad_left = data[:left_pad][::-1]
+    pad_right = data[-right_pad:][::-1]
+    padded_data = np.concatenate([pad_left, data, pad_right])
+
+    kernel = np.ones(window_size) / window_size
+    return np.convolve(padded_data, kernel, mode='valid')
+
+
 def to_float_or_list(x):
     if isinstance(x, (float, int)):
         return float(x)
@@ -94,11 +110,19 @@ def get_singular_values(matrix):
     return S
 
 def param_lp_dist(param1, param2, ord=2):
-    return sum([
-        jnp.linalg.norm(x - y, ord=ord) 
+    return sum([ # TODO: BUG!: This is sum of norms, but not the true norm!
+        jnp.linalg.norm(x.flatten() - y.flatten(), ord=ord) 
         for x, y in zip(jtree.tree_leaves(param1), jtree.tree_leaves(param2))
     ])
 
+@jax.jit
+def param_l2_dist(param1, param2):
+    return jnp.sqrt(
+        sum([
+            jnp.sum(jnp.linalg.norm(x.flatten() - y.flatten(), ord=2) ** 2)
+            for x, y in zip(jtree.tree_leaves(param1), jtree.tree_leaves(param2))
+        ])
+    )
 
 def pack_params(params):
     params_flat, treedef = jax.tree_util.tree_flatten(params)
