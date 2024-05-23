@@ -68,7 +68,7 @@ def batched_forward_apply(model, params, inputs, batch_size=1024):
     return jnp.concatenate(outputs, axis=0)
 
 
-def generate_training_data(rngkey, true_param, model, input_dim, num_samples, input_dist="uniform", batch_size=1024):
+def generate_training_data(rngkey, true_param, model, input_dim, num_samples, output_nosie_std=0.0, input_dist="uniform", batch_size=1024):
     if input_dist == "unit_ball":
         # Generate random inputs uniformly from the input ball
         rngkey, key = jax.random.split(rngkey)
@@ -82,6 +82,10 @@ def generate_training_data(rngkey, true_param, model, input_dim, num_samples, in
     
     # true_outputs = model.apply(true_param, inputs)
     true_outputs = batched_forward_apply(model, true_param, inputs, batch_size)
+    if output_nosie_std > 0.0:
+        rngkey, key = jax.random.split(rngkey)
+        noise = jax.random.normal(key, shape=true_outputs.shape) * output_nosie_std
+        true_outputs += noise
     return inputs, true_outputs
 
 def mse_loss(param, model, inputs, targets):

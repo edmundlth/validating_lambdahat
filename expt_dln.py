@@ -57,6 +57,7 @@ def cfg():
         "mean": 0.0, # rand_rank_sv, mean and std of gaussian to generate SV (singular values) 
         "std": 5.0, 
     }
+    output_noise_std = 0.1
     
     param_init = None
     num_training_data = 10000
@@ -78,7 +79,7 @@ def cfg():
     verbose=False
 
 
-def initialise_expt(rngkey, layer_widths, input_dim, input_dist, num_training_data, true_param_config):
+def initialise_expt(rngkey, layer_widths, input_dim, input_dist, output_noise_std, num_training_data, true_param_config):
     """
     Handles complex initialisation procedure for various objects required for the experiments.
     """
@@ -123,8 +124,7 @@ def initialise_expt(rngkey, layer_widths, input_dim, input_dist, num_training_da
         raise RuntimeError(f"Unsupported true parameter config: {true_param_config}")
     # create training data
     rngkey, subkey = jax.random.split(rngkey)
-    x_train, y_train = generate_training_data(subkey, true_param, model, input_dim, num_training_data, input_dist=input_dist)
-    
+    x_train, y_train = generate_training_data(subkey, true_param, model, input_dim, output_noise_std, num_training_data, input_dist=input_dist)
     return model, true_param, x_train, y_train
 
 
@@ -138,6 +138,7 @@ def run_experiment(
     input_dim,
     input_dist,
     true_param_config,
+    output_noise_std,
     num_training_data, 
     num_test_data,
     itemp, 
@@ -164,6 +165,7 @@ def run_experiment(
         layer_widths, 
         input_dim, 
         input_dist,
+        output_noise_std,
         num_training_data, 
         true_param_config
     )
